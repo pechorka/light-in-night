@@ -104,6 +104,7 @@ func (gs *gameState) renderFrame() {
 	}
 
 	if gs.paused {
+		rl.DrawText("Paused", screenHeight/2, screenWidth/2, 50, rl.White)
 		return
 	}
 
