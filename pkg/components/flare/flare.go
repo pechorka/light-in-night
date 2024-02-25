@@ -4,19 +4,18 @@ import rl "github.com/gen2brain/raylib-go/raylib"
 
 const (
 	DimSpd           = 0.99
-	WentOutThreshold = 0.5
+	WentOutThreshold = 1
 )
 
 type Flare struct {
-	X, Y                   int32
+	Pos                    rl.Vector2
 	Radius                 float32
 	CenterColor, EdgeColor rl.Color
 }
 
 func FromPos(pos rl.Vector2, radius float32, centerColor, edgeColor rl.Color) *Flare {
 	return &Flare{
-		X:           int32(pos.X),
-		Y:           int32(pos.Y),
+		Pos:         pos,
 		Radius:      radius,
 		CenterColor: centerColor,
 		EdgeColor:   edgeColor,
@@ -25,7 +24,7 @@ func FromPos(pos rl.Vector2, radius float32, centerColor, edgeColor rl.Color) *F
 
 func (f *Flare) Draw() {
 	rl.DrawCircleGradient(
-		f.X, f.Y, f.Radius,
+		int32(f.Pos.X), int32(f.Pos.Y), f.Radius,
 		f.CenterColor, f.EdgeColor,
 	)
 }

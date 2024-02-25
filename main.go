@@ -1,6 +1,8 @@
 package main
 
 import (
+	"math"
+
 	"github.com/pechorka/illuminate-game-jam/pkg/components/flare"
 	"github.com/pechorka/illuminate-game-jam/pkg/components/soldier"
 
@@ -20,9 +22,10 @@ var (
 )
 
 var (
-	flareCenterColor = rl.Color{R: 255, G: 0, B: 0, A: 127}
-	flareEdgeColor   = rl.Color{R: 255, G: 127, B: 0, A: 127}
-	flareRadius      = float32(50)
+	flareCenterColor     = rl.Color{R: 255, G: 0, B: 0, A: 127}
+	flareEdgeColor       = rl.Color{R: 255, G: 127, B: 0, A: 127}
+	flareRadius          = float32(50)
+	flareSoldierDistance = float32(50)
 )
 
 func main() {
@@ -126,6 +129,7 @@ func (gs *gameState) renderGame() {
 	}
 
 	gs.renderFlares()
+	gs.moveSoldiers()
 	gs.renderSoldiers()
 }
 
@@ -144,9 +148,40 @@ func (gs *gameState) renderFlares() {
 	}
 }
 
+func (gs *gameState) moveSoldiers() {
+	if len(gs.flares) == 0 {
+		return
+	}
+
+	// TODO: replace with KD-tree
+	findNearestFlare := func(s *soldier.Soldier) *flare.Flare {
+		var nearestFlare *flare.Flare
+		var nearestDist float32 = math.MaxFloat32
+		soldierPos := s.Pos
+		for _, f := range gs.flares {
+			dist := rl.Vector2Distance(soldierPos, f.Pos)
+			if dist < nearestDist {
+				nearestFlare = f
+				nearestDist = dist
+			}
+		}
+		return nearestFlare
+	}
+
+	for _, s := range gs.soldiers {
+		flare := findNearestFlare(s)
+		s.MoveTowards(flare.Pos, flare.Radius+flareSoldierDistance)
+
+		// TODO: find more efficient way to avoid collisions
+		for _, other := range gs.soldiers {
+			s.AvoidCollision(other)
+		}
+	}
+}
+
 func (gs *gameState) renderSoldiers() {
 	for _, s := range gs.soldiers {
-		rl.DrawTexture(gs.assets.soldier, int32(s.X), int32(s.Y), rl.White)
+		s.Draw()
 	}
 }
 
