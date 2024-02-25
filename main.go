@@ -2,10 +2,13 @@ package main
 
 import (
 	"math"
+	"math/rand"
 
-	"github.com/pechorka/illuminate-game-jam/pkg/components/flare"
-	"github.com/pechorka/illuminate-game-jam/pkg/components/soldier"
+	"github.com/pechorka/illuminate-game-jam/internal/enemy"
+	"github.com/pechorka/illuminate-game-jam/internal/flare"
+	"github.com/pechorka/illuminate-game-jam/internal/soldier"
 	"github.com/pechorka/illuminate-game-jam/pkg/data_structures/quadtree"
+	"github.com/pechorka/illuminate-game-jam/pkg/rlutils"
 
 	rl "github.com/gen2brain/raylib-go/raylib"
 )
@@ -44,8 +47,10 @@ func main() {
 	gs := &gameState{
 		assets: &gameAssets{
 			soldier: loadTextureFromImage("assets/soldier.png"),
+			enemy:   loadTextureFromImage("assets/enemy.png"),
 		},
-		quadtree: quadtree.NewQuadtree(quadtreeBounds, quadtreeCapacity),
+		prevQuadtree: quadtree.NewQuadtree(quadtreeBounds, quadtreeCapacity),
+		quadtree:     quadtree.NewQuadtree(quadtreeBounds, quadtreeCapacity),
 
 		gameScreen: gameScreenSpawnSoldier,
 	}
@@ -69,6 +74,7 @@ func loadTextureFromImage(imgPath string) rl.Texture2D {
 
 type gameAssets struct {
 	soldier rl.Texture2D
+	enemy   rl.Texture2D
 }
 
 type gameScreen int
@@ -80,13 +86,16 @@ const (
 )
 
 type gameState struct {
-	assets   *gameAssets
-	quadtree *quadtree.Quadtree
-	flares   []*flare.Flare
-	soldiers []*soldier.Soldier
+	assets       *gameAssets
+	prevQuadtree *quadtree.Quadtree
+	quadtree     *quadtree.Quadtree
+	flares       []*flare.Flare
+	soldiers     []*soldier.Soldier
+	enemies      []*enemy.Enemy
 
-	gameScreen gameScreen
-	paused     bool
+	gameScreen      gameScreen
+	paused          bool
+	enemeSpawnedAgo float32
 }
 
 func (gs *gameState) renderFrame() {
@@ -98,6 +107,7 @@ func (gs *gameState) renderFrame() {
 		return
 	}
 
+	gs.prevQuadtree, gs.quadtree = gs.quadtree, gs.prevQuadtree
 	gs.quadtree.Clear()
 	rl.ClearBackground(rl.Black)
 
@@ -143,6 +153,10 @@ func (gs *gameState) renderGame() {
 
 	gs.renderFlares()
 
+	gs.spawnEnemies()
+	gs.moveEnemies()
+	gs.renderEnemies()
+
 	gs.moveSoldiers()
 	gs.renderSoldiers()
 
@@ -170,27 +184,76 @@ func (gs *gameState) dimFlares() {
 	}
 }
 
-func (gs *gameState) moveSoldiers() {
-	// TODO: replace with KD-tree
-	findNearestFlare := func(s *soldier.Soldier) *flare.Flare {
-		var nearestFlare *flare.Flare
-		var nearestDist float32 = math.MaxFloat32
-		soldierPos := s.Pos
-		for _, f := range gs.flares {
-			dist := rl.Vector2Distance(soldierPos, f.Pos)
-			if dist < nearestDist {
-				nearestFlare = f
-				nearestDist = dist
-			}
+// TODO: replace with KD-tree
+func (gs *gameState) findNearestFlare(pos rl.Vector2) *flare.Flare {
+	var nearestFlare *flare.Flare
+	var nearestDist float32 = math.MaxFloat32
+	for _, f := range gs.flares {
+		dist := rl.Vector2Distance(pos, f.Pos)
+		if dist < nearestDist {
+			nearestFlare = f
+			nearestDist = dist
 		}
-		return nearestFlare
+	}
+	return nearestFlare
+}
+
+func (gs *gameState) spawnEnemies() {
+	gs.enemeSpawnedAgo += rl.GetFrameTime()
+	if gs.enemeSpawnedAgo < 1 {
+		return
+	}
+
+	gs.enemeSpawnedAgo = 0
+
+	newEnemyPos := gs.findPositionForEnemy()
+	newEnemy := enemy.FromPos(newEnemyPos, gs.assets.enemy)
+	gs.enemies = append(gs.enemies, newEnemy)
+}
+
+func (gs *gameState) findPositionForEnemy() rl.Vector2 {
+	for {
+		pos := rl.Vector2{
+			X: float32(rand.Intn(screenWidth)),
+			Y: float32(rand.Intn(screenHeight)),
+		}
+
+		boundaries := rlutils.TextureBoundaries(gs.assets.enemy, pos)
+
+		collissions := gs.prevQuadtree.Query(boundaries)
+		if len(collissions) == 0 {
+			return pos
+		}
+	}
+}
+
+func (gs *gameState) moveEnemies() {
+	for _, e := range gs.enemies {
+		nearestSoldier := gs.findNearestSoldier(e.Pos)
+		newPosition := e.MoveTowards(nearestSoldier.Pos)
+		enemyBoundaries := rlutils.TextureBoundaries(e.Texture, newPosition)
+		// TODO: if found collission with flare in new quadtree, try to find another soldier
+		e.MoveTo(newPosition)
+		gs.quadtree.Insert(e.ID, enemyBoundaries, e)
+	}
+}
+
+func (gs *gameState) renderEnemies() {
+	for _, e := range gs.enemies {
+		e.Draw()
+	}
+}
+
+func (gs *gameState) moveSoldiers() {
+	if len(gs.flares) == 0 {
+		return
 	}
 
 	for _, s := range gs.soldiers {
-		nearestFlare := findNearestFlare(s)
+		nearestFlare := gs.findNearestFlare(s.Pos)
 		newPosition := s.TryMoveTowards(nearestFlare.Pos)
 
-		soldierBoundaries := s.GetBoundariesAt(newPosition)
+		soldierBoundaries := rlutils.TextureBoundaries(s.Texture, newPosition)
 		collissions := gs.quadtree.Query(soldierBoundaries)
 
 		move := true
@@ -211,6 +274,20 @@ func (gs *gameState) moveSoldiers() {
 
 		gs.quadtree.Insert(s.ID, soldierBoundaries, s)
 	}
+}
+
+// TODO: replace with KD-tree
+func (gs *gameState) findNearestSoldier(pos rl.Vector2) *soldier.Soldier {
+	var nearestSoldier *soldier.Soldier
+	var nearestDist float32 = math.MaxFloat32
+	for _, s := range gs.soldiers {
+		dist := rl.Vector2Distance(pos, s.Pos)
+		if dist < nearestDist {
+			nearestSoldier = s
+			nearestDist = dist
+		}
+	}
+	return nearestSoldier
 }
 
 func (gs *gameState) renderSoldiers() {

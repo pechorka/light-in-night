@@ -39,12 +39,3 @@ func (s *Soldier) TryMoveTowards(pos rl.Vector2) rl.Vector2 {
 func (s *Soldier) MoveTo(pos rl.Vector2) {
 	s.Pos = pos
 }
-
-func (s *Soldier) GetBoundariesAt(pos rl.Vector2) rl.Rectangle {
-	return rl.Rectangle{
-		X:      pos.X,
-		Y:      pos.Y,
-		Width:  float32(s.Texture.Width),
-		Height: float32(s.Texture.Height),
-	}
-}
