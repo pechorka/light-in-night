@@ -167,7 +167,7 @@ func (gs *gameState) renderGame() {
 func (gs *gameState) renderFlares() {
 	for _, f := range gs.flares {
 		f.Draw()
-		gs.quadtree.Insert(f.ID, f.Boundaries, f)
+		gs.quadtree.Insert(f.ID, f.Boundaries(), f)
 	}
 }
 

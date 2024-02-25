@@ -8,7 +8,7 @@ import (
 
 const (
 	DimSpd           = 0.99
-	WentOutThreshold = 1
+	WentOutThreshold = 10
 )
 
 type Flare struct {
@@ -16,8 +16,6 @@ type Flare struct {
 	Pos                    rl.Vector2
 	Radius                 float32
 	CenterColor, EdgeColor rl.Color
-
-	Boundaries rl.Rectangle
 }
 
 func FromPos(pos rl.Vector2, radius float32, centerColor, edgeColor rl.Color) *Flare {
@@ -27,13 +25,6 @@ func FromPos(pos rl.Vector2, radius float32, centerColor, edgeColor rl.Color) *F
 		Radius:      radius,
 		CenterColor: centerColor,
 		EdgeColor:   edgeColor,
-
-		Boundaries: rl.Rectangle{
-			X:      pos.X - radius,
-			Y:      pos.Y - radius,
-			Width:  radius * 2,
-			Height: radius * 2,
-		},
 	}
 }
 
@@ -50,4 +41,13 @@ func (f *Flare) Dim() {
 
 func (f *Flare) WentOut() bool {
 	return f.Radius < WentOutThreshold
+}
+
+func (f *Flare) Boundaries() rl.Rectangle {
+	return rl.Rectangle{
+		X:      f.Pos.X - f.Radius,
+		Y:      f.Pos.Y - f.Radius,
+		Width:  f.Radius * 2,
+		Height: f.Radius * 2,
+	}
 }
