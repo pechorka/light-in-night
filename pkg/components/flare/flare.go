@@ -1,6 +1,10 @@
 package flare
 
-import rl "github.com/gen2brain/raylib-go/raylib"
+import (
+	"math/rand"
+
+	rl "github.com/gen2brain/raylib-go/raylib"
+)
 
 const (
 	DimSpd           = 0.99
@@ -8,17 +12,28 @@ const (
 )
 
 type Flare struct {
+	ID                     int
 	Pos                    rl.Vector2
 	Radius                 float32
 	CenterColor, EdgeColor rl.Color
+
+	Boundaries rl.Rectangle
 }
 
 func FromPos(pos rl.Vector2, radius float32, centerColor, edgeColor rl.Color) *Flare {
 	return &Flare{
+		ID:          rand.Int(),
 		Pos:         pos,
 		Radius:      radius,
 		CenterColor: centerColor,
 		EdgeColor:   edgeColor,
+
+		Boundaries: rl.Rectangle{
+			X:      pos.X - radius,
+			Y:      pos.Y - radius,
+			Width:  radius * 2,
+			Height: radius * 2,
+		},
 	}
 }
 

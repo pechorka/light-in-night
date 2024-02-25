@@ -5,6 +5,7 @@ import (
 
 	"github.com/pechorka/illuminate-game-jam/pkg/components/flare"
 	"github.com/pechorka/illuminate-game-jam/pkg/components/soldier"
+	"github.com/pechorka/illuminate-game-jam/pkg/data_structures/quadtree"
 
 	rl "github.com/gen2brain/raylib-go/raylib"
 )
@@ -15,6 +16,15 @@ const (
 )
 
 var (
+	quadtreeCapacity = 10
+	quadtreeBounds   = rl.Rectangle{
+		X: 0, Y: 0,
+		Width:  float32(screenWidth),
+		Height: float32(screenHeight),
+	}
+)
+
+var (
 	helpLabelInitialPos = rl.Vector2{X: 10, Y: 10}
 	helpLabelSpacing    = int32(30)
 	helpLabelFontSize   = int32(20)
@@ -22,10 +32,9 @@ var (
 )
 
 var (
-	flareCenterColor     = rl.Color{R: 255, G: 0, B: 0, A: 127}
-	flareEdgeColor       = rl.Color{R: 255, G: 127, B: 0, A: 127}
-	flareRadius          = float32(50)
-	flareSoldierDistance = float32(50)
+	flareCenterColor = rl.Color{R: 255, G: 0, B: 0, A: 127}
+	flareEdgeColor   = rl.Color{R: 255, G: 127, B: 0, A: 127}
+	flareRadius      = float32(50)
 )
 
 func main() {
@@ -36,6 +45,8 @@ func main() {
 		assets: &gameAssets{
 			soldier: loadTextureFromImage("assets/soldier.png"),
 		},
+		quadtree: quadtree.NewQuadtree(quadtreeBounds, quadtreeCapacity),
+
 		gameScreen: gameScreenSpawnSoldier,
 	}
 
@@ -70,8 +81,9 @@ const (
 
 type gameState struct {
 	assets   *gameAssets
+	quadtree *quadtree.Quadtree
 	flares   []*flare.Flare
-	soldiers [](*soldier.Soldier)
+	soldiers []*soldier.Soldier
 
 	gameScreen gameScreen
 	paused     bool
@@ -86,6 +98,7 @@ func (gs *gameState) renderFrame() {
 		return
 	}
 
+	gs.quadtree.Clear()
 	rl.ClearBackground(rl.Black)
 
 	switch gs.gameScreen {
@@ -129,14 +142,23 @@ func (gs *gameState) renderGame() {
 	}
 
 	gs.renderFlares()
+
 	gs.moveSoldiers()
 	gs.renderSoldiers()
+
+	gs.dimFlares()
 }
 
 func (gs *gameState) renderFlares() {
-	wentOutCount := 0
 	for _, f := range gs.flares {
 		f.Draw()
+		gs.quadtree.Insert(f.ID, f.Boundaries, f)
+	}
+}
+
+func (gs *gameState) dimFlares() {
+	wentOutCount := 0
+	for _, f := range gs.flares {
 		f.Dim()
 		if f.WentOut() {
 			wentOutCount++
@@ -149,10 +171,6 @@ func (gs *gameState) renderFlares() {
 }
 
 func (gs *gameState) moveSoldiers() {
-	if len(gs.flares) == 0 {
-		return
-	}
-
 	// TODO: replace with KD-tree
 	findNearestFlare := func(s *soldier.Soldier) *flare.Flare {
 		var nearestFlare *flare.Flare
@@ -169,13 +187,29 @@ func (gs *gameState) moveSoldiers() {
 	}
 
 	for _, s := range gs.soldiers {
-		flare := findNearestFlare(s)
-		s.MoveTowards(flare.Pos, flare.Radius+flareSoldierDistance)
+		nearestFlare := findNearestFlare(s)
+		newPosition := s.TryMoveTowards(nearestFlare.Pos)
 
-		// TODO: find more efficient way to avoid collisions
-		for _, other := range gs.soldiers {
-			s.AvoidCollision(other)
+		soldierBoundaries := s.GetBoundariesAt(newPosition)
+		collissions := gs.quadtree.Query(soldierBoundaries)
+
+		move := true
+		for _, c := range collissions {
+			switch c.Value.(type) {
+			case *soldier.Soldier:
+				move = false
+				// TODO: check if soldier is dead
+			case *flare.Flare:
+				move = false
+				// TODO: handle enemy collision
+			}
 		}
+
+		if move {
+			s.MoveTo(newPosition)
+		}
+
+		gs.quadtree.Insert(s.ID, soldierBoundaries, s)
 	}
 }
 
