@@ -263,8 +263,6 @@ func (gs *gameState) moveSoldiers() {
 			case *soldier.Soldier:
 				move = false
 				// TODO: check if soldier is dead
-			case *flare.Flare:
-				move = false
 				// TODO: handle enemy collision
 			}
 		}
