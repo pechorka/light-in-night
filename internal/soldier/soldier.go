@@ -69,6 +69,9 @@ func (s *Soldier) Draw() {
 	rl.DrawRectangleLines(int32(s.Pos.X), int32(s.Pos.Y-10), initialHealth+2, 10, rl.White)
 	rl.DrawRectangle(int32(s.Pos.X+1), int32(s.Pos.Y-9), int32(s.Health), 8, rl.Green)
 
+	// draw circle with radius of shooting range
+	rl.DrawCircleLines(int32(s.Pos.X), int32(s.Pos.Y), s.ShootingRange, rl.White)
+
 	rl.DrawTexture(texture, int32(s.Pos.X), int32(s.Pos.Y), rl.White)
 }
 
