@@ -3,6 +3,7 @@ package main
 import (
 	"math"
 	"math/rand"
+	"strconv"
 
 	"github.com/pechorka/illuminate-game-jam/internal/enemy"
 	"github.com/pechorka/illuminate-game-jam/internal/flare"
@@ -112,6 +113,7 @@ type gameState struct {
 	gameScreen      gameScreen
 	paused          bool
 	enemeSpawnedAgo float32
+	score           int
 }
 
 func (gs *gameState) renderFrame() {
@@ -167,6 +169,7 @@ func (gs *gameState) renderGame() {
 	renderHelpLabels(
 		"Click to place flares",
 		"Press space to pause",
+		"Score: "+strconv.Itoa(gs.score),
 	)
 
 	if rl.IsMouseButtonPressed(rl.MouseLeftButton) {
@@ -235,9 +238,11 @@ func (gs *gameState) renderProjectiles() {
 func (gs *gameState) cleanupDeadEnemies() {
 	aliveEnemies := make([]*enemy.Enemy, 0, len(gs.enemies))
 	for _, e := range gs.enemies {
-		if e.Health > 0 {
-			aliveEnemies = append(aliveEnemies, e)
+		if e.Health == 0 {
+			gs.score += e.Reward
+			continue
 		}
+		aliveEnemies = append(aliveEnemies, e)
 	}
 	gs.enemies = aliveEnemies
 }

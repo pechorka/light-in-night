@@ -11,6 +11,7 @@ const (
 	initialHealth = 10
 	initialAttack = 10
 	initialState  = Walking
+	initialReward = 10
 )
 
 type State int
@@ -25,6 +26,8 @@ type Enemy struct {
 	Pos   rl.Vector2
 	State State
 
+	Reward int
+
 	Speed  float32
 	Health int
 	Attack int
@@ -37,6 +40,8 @@ func FromPos(pos rl.Vector2, texture rl.Texture2D) *Enemy {
 		ID:    rand.Int(),
 		Pos:   pos,
 		State: initialState,
+
+		Reward: initialReward,
 
 		Speed:  initialSpeed,
 		Health: initialHealth,
