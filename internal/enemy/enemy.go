@@ -58,3 +58,15 @@ func (e *Enemy) MoveTowards(pos rl.Vector2) rl.Vector2 {
 
 	return rl.Vector2Add(e.Pos, dir)
 }
+
+func (e *Enemy) MoveAway(pos rl.Vector2) rl.Vector2 {
+	dir := rl.Vector2Subtract(e.Pos, pos)
+	dir = rl.Vector2Normalize(dir)
+	dir = rl.Vector2Scale(dir, e.Speed)
+
+	return rl.Vector2Add(e.Pos, dir)
+}
+
+func (e *Enemy) GetPos() rl.Vector2 {
+	return e.Pos
+}

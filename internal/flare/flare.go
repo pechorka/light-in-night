@@ -54,3 +54,7 @@ func (f *Flare) Boundaries() rl.Rectangle {
 		Height: f.Radius * 2,
 	}
 }
+
+func (f *Flare) GetPos() rl.Vector2 {
+	return f.Pos
+}

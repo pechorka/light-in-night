@@ -6,6 +6,7 @@ import (
 
 	"github.com/pechorka/illuminate-game-jam/internal/enemy"
 	"github.com/pechorka/illuminate-game-jam/internal/flare"
+	"github.com/pechorka/illuminate-game-jam/internal/projectile"
 	"github.com/pechorka/illuminate-game-jam/internal/soldier"
 	"github.com/pechorka/illuminate-game-jam/pkg/data_structures/quadtree"
 	"github.com/pechorka/illuminate-game-jam/pkg/rlutils"
@@ -43,6 +44,11 @@ var (
 	flareCenterColor = rl.Color{R: 255, G: 0, B: 0, A: 127}
 	flareEdgeColor   = rl.Color{R: 255, G: 127, B: 0, A: 127}
 	flareRadius      = float32(50)
+)
+
+var (
+	enemySpawnRate = float32(1)
+	shootingRate   = float32(2)
 )
 
 func main() {
@@ -101,6 +107,7 @@ type gameState struct {
 	flares       []*flare.Flare
 	soldiers     []*soldier.Soldier
 	enemies      []*enemy.Enemy
+	projectiles  []*projectile.Projectile
 
 	gameScreen      gameScreen
 	paused          bool
@@ -170,13 +177,16 @@ func (gs *gameState) renderGame() {
 
 	gs.renderFlares()
 
+	gs.moveProjectiles()
+	gs.renderProjectiles()
+
 	gs.cleanupDeadEnemies()
 	gs.spawnEnemies()
-	gs.moveEnemies()
+	flaredEnemies := gs.moveEnemies()
 	gs.renderEnemies()
 
 	gs.cleanupDeadSoldiers()
-	gs.moveSoldiers()
+	gs.moveSoldiers(flaredEnemies)
 	gs.renderSoldiers()
 
 	gs.dimFlares()
@@ -203,18 +213,23 @@ func (gs *gameState) dimFlares() {
 	}
 }
 
-// TODO: replace with KD-tree
-func (gs *gameState) findNearestFlare(pos rl.Vector2) *flare.Flare {
-	var nearestFlare *flare.Flare
-	var nearestDist float32 = math.MaxFloat32
-	for _, f := range gs.flares {
-		dist := rl.Vector2Distance(pos, f.Pos)
-		if dist < nearestDist {
-			nearestFlare = f
-			nearestDist = dist
+func (gs *gameState) moveProjectiles() {
+	activeProjectiles := make([]*projectile.Projectile, 0, len(gs.projectiles))
+	for _, p := range gs.projectiles {
+		p.Move()
+		if p.Pos.X < 0 || p.Pos.X > screenWidth || p.Pos.Y < 0 || p.Pos.Y > screenHeight {
+			continue
 		}
+		gs.quadtree.Insert(p.ID, p.Boundaries(), p)
+		activeProjectiles = append(activeProjectiles, p)
 	}
-	return nearestFlare
+	gs.projectiles = activeProjectiles
+}
+
+func (gs *gameState) renderProjectiles() {
+	for _, p := range gs.projectiles {
+		p.Draw()
+	}
 }
 
 func (gs *gameState) cleanupDeadEnemies() {
@@ -229,7 +244,7 @@ func (gs *gameState) cleanupDeadEnemies() {
 
 func (gs *gameState) spawnEnemies() {
 	gs.enemeSpawnedAgo += rl.GetFrameTime()
-	if gs.enemeSpawnedAgo < 1 {
+	if gs.enemeSpawnedAgo < enemySpawnRate {
 		return
 	}
 
@@ -256,27 +271,43 @@ func (gs *gameState) findPositionForEnemy() rl.Vector2 {
 	}
 }
 
-func (gs *gameState) moveEnemies() {
+func (gs *gameState) moveEnemies() []*enemy.Enemy {
+	flaredEnemies := make([]*enemy.Enemy, 0, len(gs.enemies)/3)
 	for _, e := range gs.enemies {
-		nearestSoldier := gs.findNearestSoldier(e.Pos)
+		nearestSoldier := findNearest(gs.soldiers, e.Pos)
 		newPosition := e.MoveTowards(nearestSoldier.Pos)
 		e.State = enemy.Walking
 
 		enemyBoundaries := rlutils.TextureBoundaries(e.Texture, newPosition)
 		// soldiers didn't move yet, so we can use previous quadtree
-		collissions := gs.prevQuadtree.Query(enemyBoundaries)
+		soldierCollissions := gs.prevQuadtree.Query(enemyBoundaries)
 
-		for _, c := range collissions {
+		for _, c := range soldierCollissions {
 			if soldier, ok := c.Value.(*soldier.Soldier); ok {
 				soldier.Health -= e.Attack
 				e.State = enemy.Melee
 				newPosition = e.Pos // don't move if collission
 			}
 		}
-		// TODO: if found collission with flare in new quadtree, try to find another soldier
+
+		collissions := gs.quadtree.Query(enemyBoundaries)
+		for _, c := range collissions {
+			switch val := c.Value.(type) {
+			case *flare.Flare:
+				flaredEnemies = append(flaredEnemies, e)
+				// Try to move away from flare
+				e.State = enemy.Walking
+				newPosition = e.MoveAway(val.Pos)
+			case *projectile.Projectile:
+				e.Health -= val.Damage
+			}
+		}
+
 		e.Pos = newPosition
 		gs.quadtree.Insert(e.ID, enemyBoundaries, e)
 	}
+
+	return flaredEnemies
 }
 
 func (gs *gameState) renderEnemies() {
@@ -295,12 +326,14 @@ func (gs *gameState) cleanupDeadSoldiers() {
 	gs.soldiers = aliveSoldiers
 }
 
-func (gs *gameState) moveSoldiers() {
+func (gs *gameState) moveSoldiers(flaredEnemies []*enemy.Enemy) {
 	for _, s := range gs.soldiers {
-		nearestFlare := gs.findNearestFlare(s.Pos)
+		s.ShootAgo += rl.GetFrameTime()
+
+		nearestFlare := findNearest(gs.flares, s.Pos)
 		newPosition := s.Pos
 		if nearestFlare != nil {
-			newPosition = s.TryMoveTowards(nearestFlare.Pos)
+			newPosition = s.MoveTowards(nearestFlare.Pos)
 		}
 		s.State = soldier.Walking
 
@@ -318,24 +351,27 @@ func (gs *gameState) moveSoldiers() {
 				val.Health -= s.Attack
 			}
 		}
+
+		if s.State == soldier.Walking {
+			// try to find shooting target
+			nearestEnemy := findNearest(flaredEnemies, s.Pos)
+			if nearestEnemy != nil &&
+				s.WithinShootingRange(nearestEnemy.Pos) &&
+				s.ShootAgo > shootingRate {
+				s.State = soldier.Shooting
+				s.ShootAgo = 0
+				newPosition = s.Pos // don't move if shooting
+				// spawn projectile
+				projectileVelocity := rl.Vector2Subtract(nearestEnemy.Pos, s.Pos)
+				newProjectile := projectile.FromPos(s.Pos, projectileVelocity)
+				gs.projectiles = append(gs.projectiles, newProjectile)
+			}
+		}
+
 		s.Pos = newPosition
 
 		gs.quadtree.Insert(s.ID, soldierBoundaries, s)
 	}
-}
-
-// TODO: replace with KD-tree
-func (gs *gameState) findNearestSoldier(pos rl.Vector2) *soldier.Soldier {
-	var nearestSoldier *soldier.Soldier
-	var nearestDist float32 = math.MaxFloat32
-	for _, s := range gs.soldiers {
-		dist := rl.Vector2Distance(pos, s.Pos)
-		if dist < nearestDist {
-			nearestSoldier = s
-			nearestDist = dist
-		}
-	}
-	return nearestSoldier
 }
 
 func (gs *gameState) renderSoldiers() {
@@ -368,4 +404,22 @@ func renderHelpLabels(labels ...string) {
 		spacing := helpLabelSpacing * i
 		rl.DrawText(labels[i], x, y+spacing, helpLabelFontSize, helpLabelColor)
 	}
+}
+
+type positionable interface {
+	GetPos() rl.Vector2
+}
+
+// TODO: replace with KD-tree
+func findNearest[T positionable](items []T, pos rl.Vector2) T {
+	var nearest T
+	var nearestDist float32 = math.MaxFloat32
+	for _, i := range items {
+		dist := rl.Vector2Distance(pos, i.GetPos())
+		if dist < nearestDist {
+			nearest = i
+			nearestDist = dist
+		}
+	}
+	return nearest
 }
