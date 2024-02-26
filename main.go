@@ -401,6 +401,7 @@ func (gs *gameState) renderGameOver() {
 		gs.soldiers = nil
 		gs.enemies = nil
 		gs.flares = nil
+		gs.projectiles = nil
 		return
 	}
 
