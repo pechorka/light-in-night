@@ -1,9 +1,11 @@
 package main
 
 import (
+	"embed"
 	"math"
 	"math/rand"
 	"strconv"
+	"strings"
 
 	"github.com/pechorka/illuminate-game-jam/internal/enemy"
 	"github.com/pechorka/illuminate-game-jam/internal/flare"
@@ -14,6 +16,9 @@ import (
 
 	rl "github.com/gen2brain/raylib-go/raylib"
 )
+
+//go:embed assets
+var assets embed.FS
 
 const (
 	screenWidth  = 800
@@ -80,7 +85,12 @@ func main() {
 }
 
 func loadTextureFromImage(imgPath string) rl.Texture2D {
-	img := rl.LoadImage(imgPath)
+	file, err := assets.ReadFile(imgPath)
+	if err != nil {
+		panic(err)
+	}
+	fileExtention := imgPath[strings.LastIndexByte(imgPath, '.'):]
+	img := rl.LoadImageFromMemory(fileExtention, file, int32(len(file)))
 	defer rl.UnloadImage(img)
 	return rl.LoadTextureFromImage(img)
 }
