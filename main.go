@@ -35,6 +35,11 @@ var (
 )
 
 var (
+	centerLabelFontSize = int32(50)
+	centerLabelColor    = rl.White
+)
+
+var (
 	flareCenterColor = rl.Color{R: 255, G: 0, B: 0, A: 127}
 	flareEdgeColor   = rl.Color{R: 255, G: 127, B: 0, A: 127}
 	flareRadius      = float32(50)
@@ -46,8 +51,9 @@ func main() {
 
 	gs := &gameState{
 		assets: &gameAssets{
-			soldier: loadTextureFromImage("assets/soldier.png"),
-			enemy:   loadTextureFromImage("assets/enemy.png"),
+			soldier:      loadTextureFromImage("assets/soldier.png"),
+			soldierMelee: loadTextureFromImage("assets/soldier_melee.png"),
+			enemy:        loadTextureFromImage("assets/enemy.png"),
 		},
 		prevQuadtree: quadtree.NewQuadtree(quadtreeBounds, quadtreeCapacity),
 		quadtree:     quadtree.NewQuadtree(quadtreeBounds, quadtreeCapacity),
@@ -73,8 +79,10 @@ func loadTextureFromImage(imgPath string) rl.Texture2D {
 }
 
 type gameAssets struct {
-	soldier rl.Texture2D
-	enemy   rl.Texture2D
+	soldier      rl.Texture2D
+	soldierMelee rl.Texture2D
+
+	enemy rl.Texture2D
 }
 
 type gameScreen int
@@ -83,6 +91,7 @@ const (
 	gameScreenMainMenu gameScreen = iota
 	gameScreenSpawnSoldier
 	gameScreenGame
+	gameScreenOver
 )
 
 type gameState struct {
@@ -104,7 +113,7 @@ func (gs *gameState) renderFrame() {
 	}
 
 	if gs.paused {
-		rl.DrawText("Paused", screenHeight/2, screenWidth/2, 50, rl.White)
+		rlutils.DrawTextAtCenterOfScreen("Paused", screenWidth, screenHeight, centerLabelFontSize, centerLabelColor)
 		return
 	}
 
@@ -117,23 +126,25 @@ func (gs *gameState) renderFrame() {
 		gs.renderSoldierSpawn()
 	case gameScreenGame:
 		gs.renderGame()
+	case gameScreenOver:
+		gs.renderGameOver()
 	}
 }
 
 func (gs *gameState) renderSoldierSpawn() {
-	renderHelpLabels(
-		"Spawn soldiers by clicking",
-		"Press enter to start game",
-	)
-
 	if rl.IsKeyPressed(rl.KeyEnter) {
 		gs.gameScreen = gameScreenGame
 		return
 	}
 
+	renderHelpLabels(
+		"Spawn soldiers by clicking",
+		"Press enter to start game",
+	)
+
 	if rl.IsMouseButtonPressed(rl.MouseLeftButton) {
 		mousePos := rl.GetMousePosition()
-		newSoldier := soldier.FromPos(mousePos, gs.assets.soldier)
+		newSoldier := soldier.FromPos(mousePos, gs.assets.soldier, gs.assets.soldierMelee)
 		gs.soldiers = append(gs.soldiers, newSoldier)
 	}
 
@@ -141,6 +152,11 @@ func (gs *gameState) renderSoldierSpawn() {
 }
 
 func (gs *gameState) renderGame() {
+	if len(gs.soldiers) == 0 {
+		gs.gameScreen = gameScreenOver
+		return
+	}
+
 	renderHelpLabels(
 		"Click to place flares",
 		"Press space to pause",
@@ -154,10 +170,12 @@ func (gs *gameState) renderGame() {
 
 	gs.renderFlares()
 
+	gs.cleanupDeadEnemies()
 	gs.spawnEnemies()
 	gs.moveEnemies()
 	gs.renderEnemies()
 
+	gs.cleanupDeadSoldiers()
 	gs.moveSoldiers()
 	gs.renderSoldiers()
 
@@ -199,6 +217,16 @@ func (gs *gameState) findNearestFlare(pos rl.Vector2) *flare.Flare {
 	return nearestFlare
 }
 
+func (gs *gameState) cleanupDeadEnemies() {
+	aliveEnemies := make([]*enemy.Enemy, 0, len(gs.enemies))
+	for _, e := range gs.enemies {
+		if e.Health > 0 {
+			aliveEnemies = append(aliveEnemies, e)
+		}
+	}
+	gs.enemies = aliveEnemies
+}
+
 func (gs *gameState) spawnEnemies() {
 	gs.enemeSpawnedAgo += rl.GetFrameTime()
 	if gs.enemeSpawnedAgo < 1 {
@@ -232,9 +260,21 @@ func (gs *gameState) moveEnemies() {
 	for _, e := range gs.enemies {
 		nearestSoldier := gs.findNearestSoldier(e.Pos)
 		newPosition := e.MoveTowards(nearestSoldier.Pos)
+		e.State = enemy.Walking
+
 		enemyBoundaries := rlutils.TextureBoundaries(e.Texture, newPosition)
+		// soldiers didn't move yet, so we can use previous quadtree
+		collissions := gs.prevQuadtree.Query(enemyBoundaries)
+
+		for _, c := range collissions {
+			if soldier, ok := c.Value.(*soldier.Soldier); ok {
+				soldier.Health -= e.Attack
+				e.State = enemy.Melee
+				newPosition = e.Pos // don't move if collission
+			}
+		}
 		// TODO: if found collission with flare in new quadtree, try to find another soldier
-		e.MoveTo(newPosition)
+		e.Pos = newPosition
 		gs.quadtree.Insert(e.ID, enemyBoundaries, e)
 	}
 }
@@ -245,31 +285,40 @@ func (gs *gameState) renderEnemies() {
 	}
 }
 
-func (gs *gameState) moveSoldiers() {
-	if len(gs.flares) == 0 {
-		return
+func (gs *gameState) cleanupDeadSoldiers() {
+	aliveSoldiers := make([]*soldier.Soldier, 0, len(gs.soldiers))
+	for _, s := range gs.soldiers {
+		if s.Health > 0 {
+			aliveSoldiers = append(aliveSoldiers, s)
+		}
 	}
+	gs.soldiers = aliveSoldiers
+}
 
+func (gs *gameState) moveSoldiers() {
 	for _, s := range gs.soldiers {
 		nearestFlare := gs.findNearestFlare(s.Pos)
-		newPosition := s.TryMoveTowards(nearestFlare.Pos)
+		newPosition := s.Pos
+		if nearestFlare != nil {
+			newPosition = s.TryMoveTowards(nearestFlare.Pos)
+		}
+		s.State = soldier.Walking
 
-		soldierBoundaries := rlutils.TextureBoundaries(s.Texture, newPosition)
+		soldierBoundaries := rlutils.TextureBoundaries(s.Walking, newPosition)
 		collissions := gs.quadtree.Query(soldierBoundaries)
 
-		move := true
 		for _, c := range collissions {
-			switch c.Value.(type) {
+			switch val := c.Value.(type) {
 			case *soldier.Soldier:
-				move = false
+				newPosition = s.Pos // don't move if collission
 				// TODO: check if soldier is dead
-				// TODO: handle enemy collision
+			case *enemy.Enemy:
+				newPosition = s.Pos // don't move if collission
+				s.State = soldier.Melee
+				val.Health -= s.Attack
 			}
 		}
-
-		if move {
-			s.MoveTo(newPosition)
-		}
+		s.Pos = newPosition
 
 		gs.quadtree.Insert(s.ID, soldierBoundaries, s)
 	}
@@ -293,6 +342,22 @@ func (gs *gameState) renderSoldiers() {
 	for _, s := range gs.soldiers {
 		s.Draw()
 	}
+}
+
+func (gs *gameState) renderGameOver() {
+	if rl.IsKeyPressed(rl.KeyEnter) {
+		gs.gameScreen = gameScreenSpawnSoldier
+		gs.soldiers = nil
+		gs.enemies = nil
+		gs.flares = nil
+		return
+	}
+
+	renderHelpLabels(
+		"Press enter to restart",
+	)
+
+	rlutils.DrawTextAtCenterOfScreen("Game Over", screenWidth, screenHeight, centerLabelFontSize, centerLabelColor)
 }
 
 func renderHelpLabels(labels ...string) {
