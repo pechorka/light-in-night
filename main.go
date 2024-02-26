@@ -345,23 +345,15 @@ func (gs *gameState) moveSoldiers(flaredEnemies []*enemy.Enemy) {
 	for _, s := range gs.soldiers {
 		s.ShootAgo += rl.GetFrameTime()
 
-		nearestFlare := findNearest(gs.flares, s.Pos)
-		newPosition := s.Pos
-		if nearestFlare != nil {
-			newPosition = s.MoveTowards(nearestFlare.Pos)
-		}
 		s.State = soldier.Walking
 
-		soldierBoundaries := rlutils.TextureBoundaries(s.Walking, newPosition)
+		soldierBoundaries := rlutils.TextureBoundaries(s.Walking, s.Pos)
 		collissions := gs.quadtree.Query(soldierBoundaries)
 
 		for _, c := range collissions {
+			// TODO: if soldier is inside of flare - blind him
 			switch val := c.Value.(type) {
-			case *soldier.Soldier:
-				newPosition = s.Pos // don't move if collission
-				// TODO: check if soldier is dead
 			case *enemy.Enemy:
-				newPosition = s.Pos // don't move if collission
 				s.State = soldier.Melee
 				val.Health -= s.Attack
 			}
@@ -375,15 +367,12 @@ func (gs *gameState) moveSoldiers(flaredEnemies []*enemy.Enemy) {
 				s.ShootAgo > shootingRate {
 				s.State = soldier.Shooting
 				s.ShootAgo = 0
-				newPosition = s.Pos // don't move if shooting
 				// spawn projectile
 				projectileVelocity := rl.Vector2Subtract(nearestEnemy.Pos, s.Pos)
 				newProjectile := projectile.FromPos(s.Pos, projectileVelocity)
 				gs.projectiles = append(gs.projectiles, newProjectile)
 			}
 		}
-
-		s.Pos = newPosition
 
 		gs.quadtree.Insert(s.ID, soldierBoundaries, s)
 	}
