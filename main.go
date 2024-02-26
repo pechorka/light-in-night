@@ -109,6 +109,7 @@ const (
 	gameScreenSpawnSoldier
 	gameScreenGame
 	gameScreenOver
+	// TODO: add leaderboard screen
 )
 
 type gameState struct {
@@ -123,7 +124,8 @@ type gameState struct {
 	gameScreen      gameScreen
 	paused          bool
 	enemeSpawnedAgo float32
-	score           int
+	// TODO: add money
+	score int
 }
 
 func (gs *gameState) renderFrame() {
@@ -151,6 +153,8 @@ func (gs *gameState) renderFrame() {
 }
 
 func (gs *gameState) renderSoldierSpawn() {
+	// TODO: soldiers should be bought in shop
+	// TODO: should have initial amount of money
 	if rl.IsKeyPressed(rl.KeyEnter) {
 		gs.gameScreen = gameScreenGame
 		return
@@ -171,6 +175,7 @@ func (gs *gameState) renderSoldierSpawn() {
 }
 
 func (gs *gameState) renderGame() {
+	// TODO: add header and footer
 	if len(gs.soldiers) == 0 {
 		gs.gameScreen = gameScreenOver
 		return
@@ -203,6 +208,10 @@ func (gs *gameState) renderGame() {
 	gs.renderSoldiers()
 
 	gs.dimFlares()
+
+	// TODO: render game shop as footer
+	// TODO: shop can have items to increase difficulty, but with higher rewards
+	// for example: princess that needs to be protected for some time, but gives a lot of money
 }
 
 func (gs *gameState) renderFlares() {

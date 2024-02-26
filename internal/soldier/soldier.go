@@ -72,6 +72,8 @@ func (s *Soldier) Draw() {
 	// draw circle with radius of shooting range
 	rl.DrawCircleLines(int32(s.Pos.X), int32(s.Pos.Y), s.ShootingRange, rl.White)
 
+	// TODO: draw reload bar
+
 	rl.DrawTexture(texture, int32(s.Pos.X), int32(s.Pos.Y), rl.White)
 }
 
