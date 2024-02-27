@@ -236,7 +236,7 @@ func (gs *gameState) dimFlares() {
 }
 
 func (gs *gameState) moveProjectiles() {
-	activeProjectiles := make([]*projectile.Projectile, 0, len(gs.projectiles))
+	activeProjectiles := gs.projectiles[:0]
 	for _, p := range gs.projectiles {
 		p.Move()
 		if p.Pos.X < 0 || p.Pos.X > screenWidth || p.Pos.Y < 0 || p.Pos.Y > screenHeight {
@@ -255,7 +255,7 @@ func (gs *gameState) renderProjectiles() {
 }
 
 func (gs *gameState) cleanupDeadEnemies() {
-	aliveEnemies := make([]*enemy.Enemy, 0, len(gs.enemies))
+	aliveEnemies := gs.enemies[:0]
 	for _, e := range gs.enemies {
 		if e.Health == 0 {
 			gs.score += e.Reward
@@ -341,7 +341,7 @@ func (gs *gameState) renderEnemies() {
 }
 
 func (gs *gameState) cleanupDeadSoldiers() {
-	aliveSoldiers := make([]*soldier.Soldier, 0, len(gs.soldiers))
+	aliveSoldiers := gs.soldiers[:0]
 	for _, s := range gs.soldiers {
 		if s.Health > 0 {
 			aliveSoldiers = append(aliveSoldiers, s)
