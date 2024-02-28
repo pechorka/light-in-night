@@ -77,9 +77,10 @@ var (
 )
 
 var (
-	flareCenterColor = rl.Color{R: 255, G: 0, B: 0, A: 127}
-	flareEdgeColor   = rl.Color{R: 255, G: 127, B: 0, A: 127}
-	flareRadius      = float32(50)
+	flareCenterColor  = rl.Color{R: 255, G: 0, B: 0, A: 127}
+	flareEdgeColor    = rl.Color{R: 255, G: 127, B: 0, A: 127}
+	flareRadius       = float32(50)
+	initialFlareCount = 10
 )
 
 var (
@@ -101,6 +102,8 @@ func main() {
 
 		gameScreen: gameScreenGame,
 		paused:     true,
+
+		flareCount: initialFlareCount,
 	}
 
 	gs.soldiers = append(gs.soldiers, soldier.FromPos(rl.Vector2{X: arenaWidth / 2, Y: arenaHeight / 2}, gs.assets.soldier, gs.assets.soldierMelee))
@@ -157,6 +160,8 @@ type gameState struct {
 	enemeSpawnedAgo float32
 	// TODO: add money
 	score int
+
+	flareCount int
 
 	gameTime float32
 
@@ -294,6 +299,12 @@ func (gs *gameState) renderFooter() {
 		if rl.CheckCollisionPointRec(rl.GetMousePosition(), itemBoundaries) {
 			// description should be displayed above the item with border
 			drawDescription(item.description)
+
+			if rl.IsMouseButtonPressed(rl.MouseLeftButton) {
+				if i == 1 { // flare
+					gs.flareCount += 10
+				}
+			}
 		}
 	}
 }
@@ -387,13 +398,14 @@ func (gs *gameState) renderDraggingSoldier() {
 }
 
 func (gs *gameState) addFlare() {
-	if rl.IsMouseButtonPressed(rl.MouseLeftButton) {
+	if rl.IsMouseButtonPressed(rl.MouseLeftButton) && gs.draggingSoldier == nil && gs.flareCount > 0 {
 		mousePos := rl.GetMousePosition()
 		if !rl.CheckCollisionPointRec(mousePos, arenaBoundaries) {
 			return
 		}
 		newFlare := flare.FromPos(mousePos, flareRadius, flareCenterColor, flareEdgeColor)
 		gs.flares = append(gs.flares, newFlare)
+		gs.flareCount--
 	}
 }
 
@@ -401,6 +413,12 @@ func (gs *gameState) renderFlares() {
 	for _, f := range gs.flares {
 		f.Draw()
 	}
+	// render flare count at top right corner
+	flareCountText := "Flares: " + strconv.Itoa(gs.flareCount)
+	flareCountTextWidth := rl.MeasureText(flareCountText, 20)
+	x := int32(arenaBoundaries.X + arenaBoundaries.Width - float32(flareCountTextWidth) - 10)
+	y := int32(headerBoundaries.Height + 10)
+	rl.DrawText("Flares: "+strconv.Itoa(gs.flareCount), x, y, 20, rl.White)
 }
 
 func (gs *gameState) dimFlares() {
