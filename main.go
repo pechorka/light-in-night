@@ -351,7 +351,7 @@ func (gs *gameState) moveProjectiles() {
 	activeProjectiles := gs.projectiles[:0]
 	for _, p := range gs.projectiles {
 		p.Move()
-		if p.Pos.X < 0 || p.Pos.X > arenaWidth || p.Pos.Y < 0 || p.Pos.Y > arenaHeight {
+		if !rl.CheckCollisionPointRec(p.Pos, arenaBoundaries) {
 			continue
 		}
 		gs.quadtree.Insert(p.ID, p.Boundaries(), p)
