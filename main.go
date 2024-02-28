@@ -38,15 +38,23 @@ var (
 		Width:  screenWidth,
 		Height: screenHeight * 0.15,
 	}
+
+	arenaHeight float32 = screenHeight - headerBoundaries.Height - footerBoundaries.Height
+
+	soldierStorageBoundaries = rl.Rectangle{
+		X:      0,
+		Y:      headerBoundaries.Height,
+		Width:  screenWidth * 0.15,
+		Height: arenaHeight,
+	}
 )
 
 var (
-	arenaWidth  float32 = screenWidth
-	arenaHeight float32 = screenHeight - headerBoundaries.Height - footerBoundaries.Height
+	arenaWidth float32 = screenWidth - soldierStorageBoundaries.Width
 )
 
 var arenaBoundaries = rl.Rectangle{
-	X:      0,
+	X:      soldierStorageBoundaries.Width,
 	Y:      headerBoundaries.Height,
 	Width:  arenaWidth,
 	Height: arenaHeight,
@@ -91,8 +99,11 @@ func main() {
 		prevQuadtree: quadtree.NewQuadtree(arenaBoundaries, quadtreeCapacity),
 		quadtree:     quadtree.NewQuadtree(arenaBoundaries, quadtreeCapacity),
 
-		gameScreen: gameScreenSpawnSoldier,
+		gameScreen: gameScreenGame,
+		paused:     true,
 	}
+
+	gs.soldiers = append(gs.soldiers, soldier.FromPos(rl.Vector2{X: arenaWidth / 2, Y: arenaHeight / 2}, gs.assets.soldier, gs.assets.soldierMelee))
 
 	for !rl.WindowShouldClose() {
 		rl.BeginDrawing()
@@ -127,7 +138,6 @@ type gameScreen int
 
 const (
 	gameScreenMainMenu gameScreen = iota
-	gameScreenSpawnSoldier
 	gameScreenGame
 	gameScreenOver
 	// TODO: add leaderboard screen
@@ -149,6 +159,8 @@ type gameState struct {
 	score int
 
 	gameTime float32
+
+	draggingSoldier *soldier.Soldier
 }
 
 func (gs *gameState) renderFrame() {
@@ -161,35 +173,11 @@ func (gs *gameState) renderFrame() {
 	rl.ClearBackground(rl.Black)
 
 	switch gs.gameScreen {
-	case gameScreenSpawnSoldier:
-		gs.renderSoldierSpawn()
 	case gameScreenGame:
 		gs.renderGame()
 	case gameScreenOver:
 		gs.renderGameOver()
 	}
-}
-
-func (gs *gameState) renderSoldierSpawn() {
-	// TODO: soldiers should be bought in shop
-	// TODO: should have initial amount of money
-	if rl.IsKeyPressed(rl.KeyEnter) {
-		gs.gameScreen = gameScreenGame
-		return
-	}
-
-	renderHelpLabels(
-		"Spawn soldiers by clicking",
-		"Press enter to start game",
-	)
-
-	if rl.IsMouseButtonPressed(rl.MouseLeftButton) {
-		mousePos := rl.GetMousePosition()
-		newSoldier := soldier.FromPos(mousePos, gs.assets.soldier, gs.assets.soldierMelee)
-		gs.soldiers = append(gs.soldiers, newSoldier)
-	}
-
-	gs.renderSoldiers()
 }
 
 func (gs *gameState) renderGame() {
@@ -216,6 +204,9 @@ func (gs *gameState) renderGame() {
 
 	gs.renderHeader()
 	gs.renderFooter()
+	gs.renderSoldierStorage()
+	gs.placeDraggedSoldier()
+	gs.renderDraggingSoldier()
 	gs.renderFlares()
 	gs.renderProjectiles()
 	gs.renderEnemies()
@@ -302,16 +293,97 @@ func (gs *gameState) renderFooter() {
 		// display description when hovered
 		if rl.CheckCollisionPointRec(rl.GetMousePosition(), itemBoundaries) {
 			// description should be displayed above the item with border
-			descriptionBoundaries := rl.Rectangle{
-				X:      footerBoundaries.X + 10,
-				Y:      footerBoundaries.Y - 10 - 100,
-				Width:  screenWidth - 20,
-				Height: 100,
-			}
-			rl.DrawRectangleLinesEx(descriptionBoundaries, 2, rl.White)
-			rl.DrawText(item.description, int32(descriptionBoundaries.X+5), int32(descriptionBoundaries.Y+5), 20, rl.White)
+			drawDescription(item.description)
 		}
 	}
+}
+
+func (gs *gameState) renderSoldierStorage() {
+	rl.DrawRectangleRec(soldierStorageBoundaries, rl.Blue)
+
+	type soldierStorageItem struct {
+		name string
+		icon rl.Texture2D
+		// TODO: add constructor for soldier
+		count       int
+		description string
+	}
+
+	mockItems := []*soldierStorageItem{
+		{name: "Soldier", icon: gs.assets.soldier, count: 10, description: "Basic soldier"},
+		{name: "Commander", icon: gs.assets.soldier, count: 5, description: "Increases damage"},
+		{name: "Medic", icon: gs.assets.soldier, count: 3, description: "Heals soldiers"},
+	}
+
+	itemWidth := soldierStorageBoundaries.Width - 20 // 10px margin on each side
+	itemHeight := float32(100)
+	for i, item := range mockItems {
+		itemBoundaries := rl.Rectangle{
+			X:      soldierStorageBoundaries.X + 10,
+			Y:      soldierStorageBoundaries.Y + float32(i)*(itemHeight+10),
+			Width:  itemWidth,
+			Height: itemHeight,
+		}
+		rl.DrawRectangleLinesEx(itemBoundaries, 2, rl.White)
+		// draw count in top left corner and icon in center
+		countText := strconv.Itoa(item.count)
+		countTextPos := rl.Vector2{
+			X: itemBoundaries.X + 10,
+			Y: itemBoundaries.Y + 10,
+		}
+		rl.DrawText(countText, int32(countTextPos.X), int32(countTextPos.Y), 20, rl.White)
+
+		iconPos := rl.Vector2{
+			X: itemBoundaries.X + itemBoundaries.Width/2 - float32(item.icon.Width/2),
+			Y: itemBoundaries.Y + itemBoundaries.Height/2 - float32(item.icon.Height/2),
+		}
+		rl.DrawTextureV(item.icon, iconPos, rl.White)
+
+		// draw name in botton left corner of the item
+		namePos := rl.Vector2{
+			X: itemBoundaries.X + 5,
+			Y: itemBoundaries.Y + itemBoundaries.Height - 25,
+		}
+		// TODO: adjust font size based on name length
+		rl.DrawText(item.name, int32(namePos.X), int32(namePos.Y), 20, rl.White)
+
+		// display description when hovered
+		mousePos := rl.GetMousePosition()
+		if rl.CheckCollisionPointRec(mousePos, itemBoundaries) {
+			drawDescription(item.description)
+
+			// TODO: move to separate function
+			if rl.IsMouseButtonPressed(rl.MouseLeftButton) && item.count > 0 {
+				gs.draggingSoldier = soldier.FromPos(mousePos, item.icon, item.icon)
+				item.count--
+			}
+		}
+	}
+}
+
+func (gs *gameState) placeDraggedSoldier() {
+	if gs.draggingSoldier == nil {
+		return
+	}
+	if !rl.IsMouseButtonPressed(rl.MouseLeftButton) {
+		return
+	}
+	mousePos := rl.GetMousePosition()
+	if !rl.CheckCollisionPointRec(mousePos, arenaBoundaries) {
+		return
+	}
+	gs.draggingSoldier.Pos = mousePos
+	gs.soldiers = append(gs.soldiers, gs.draggingSoldier)
+	gs.prevQuadtree.Insert(gs.draggingSoldier.ID, rlutils.TextureBoundaries(gs.draggingSoldier.Walking, gs.draggingSoldier.Pos), gs.draggingSoldier)
+	gs.draggingSoldier = nil
+}
+
+func (gs *gameState) renderDraggingSoldier() {
+	if gs.draggingSoldier == nil {
+		return
+	}
+	gs.draggingSoldier.Pos = rl.GetMousePosition()
+	gs.draggingSoldier.Draw()
 }
 
 func (gs *gameState) addFlare() {
@@ -393,9 +465,13 @@ func (gs *gameState) spawnEnemies() {
 
 func (gs *gameState) findPositionForEnemy() rl.Vector2 {
 	for {
+
+		// should be spawned in arena boundaries
 		pos := rl.Vector2{
-			X: float32(rand.Intn(int(arenaWidth))),
-			Y: float32(rand.Intn(int(arenaHeight))),
+			// between arena X and X + Width
+			X: float32(rand.Intn(int(arenaBoundaries.Width))) + arenaBoundaries.X,
+			// between arena Y and Y + Height
+			Y: float32(rand.Intn(int(arenaBoundaries.Height))) + arenaBoundaries.Y,
 		}
 
 		boundaries := rlutils.TextureBoundaries(gs.assets.enemy, pos)
@@ -507,7 +583,7 @@ func (gs *gameState) renderSoldiers() {
 
 func (gs *gameState) renderGameOver() {
 	if rl.IsKeyPressed(rl.KeyEnter) {
-		gs.gameScreen = gameScreenSpawnSoldier
+		gs.gameScreen = gameScreenGame
 		gs.soldiers = nil
 		gs.enemies = nil
 		gs.flares = nil
@@ -519,7 +595,7 @@ func (gs *gameState) renderGameOver() {
 		"Press enter to restart",
 	)
 
-	rlutils.DrawTextAtCenterOfScreen("Game Over", screenWidth, screenHeight, centerLabelFontSize, centerLabelColor)
+	rlutils.DrawTextAtCenterOfRectangle("Game Over", arenaBoundaries, centerLabelFontSize, centerLabelColor)
 }
 
 func renderHelpLabels(labels ...string) {
@@ -548,4 +624,19 @@ func findNearest[T positionable](items []T, pos rl.Vector2) T {
 		}
 	}
 	return nearest
+}
+
+func drawDescription(description string) {
+	// description should be displayed in the center of the arena in a rectangle lines
+	// with white color
+	descriptionBoundaries := rl.Rectangle{
+		X:      arenaBoundaries.X + 10,
+		Y:      arenaBoundaries.Y + 10,
+		Width:  arenaBoundaries.Width - 20,
+		Height: arenaBoundaries.Height / 3,
+	}
+
+	rl.DrawRectangleLinesEx(descriptionBoundaries, 2, rl.White)
+
+	rlutils.DrawTextAtCenterOfRectangle(description, descriptionBoundaries, 20, rl.White)
 }
