@@ -4,20 +4,32 @@ import (
 	"math/rand"
 
 	rl "github.com/gen2brain/raylib-go/raylib"
+	"github.com/pechorka/illuminate-game-jam/pkg/rlutils"
 )
 
 const (
 	initialSpeed         = 2
 	initialHealth        = 100
-	initialAttack        = 10
+	initialDamage        = 10
 	initialShootingRange = 100
-	initialState         = Walking
+	initialShootingRate  = 2
+	initialState         = Standing
+)
+
+const (
+	healthbarWidth  float32 = 50
+	healthbarHeight float32 = 10
+)
+
+const (
+	reloadBarWidth  float32 = healthbarWidth
+	reloadBarHeight float32 = healthbarHeight / 2
 )
 
 type State int
 
 const (
-	Walking State = iota + 1
+	Standing State = iota + 1
 	Melee
 	Shooting
 )
@@ -28,9 +40,11 @@ type Soldier struct {
 	State State
 
 	Speed         float32
-	Health        int
-	Attack        int
+	MaxHealth     float32
+	Health        float32
+	Damage        float32
 	ShootingRange float32
+	ShootingRate  float32
 
 	Walking rl.Texture2D
 	Melee   rl.Texture2D
@@ -46,18 +60,22 @@ func FromPos(pos rl.Vector2, walking, melee rl.Texture2D) *Soldier {
 
 		Speed:         initialSpeed,
 		Health:        initialHealth,
-		Attack:        initialAttack,
+		MaxHealth:     initialHealth,
+		Damage:        initialDamage,
 		ShootingRange: initialShootingRange,
+		ShootingRate:  initialShootingRate,
 
 		Walking: walking,
 		Melee:   melee,
+
+		ShootAgo: initialShootingRate,
 	}
 }
 
 func (s *Soldier) Draw() {
 	texture := s.Walking
 	switch s.State {
-	case Walking:
+	case Standing:
 		texture = s.Walking
 	case Melee:
 		texture = s.Melee
@@ -66,15 +84,39 @@ func (s *Soldier) Draw() {
 	}
 	// draw health bar above soldier
 	// +2 and +1 are to make the health bar look better
-	rl.DrawRectangleLines(int32(s.Pos.X), int32(s.Pos.Y-10), initialHealth+2, 10, rl.White)
-	rl.DrawRectangle(int32(s.Pos.X+1), int32(s.Pos.Y-9), int32(s.Health), 8, rl.Green)
+	scaledDownInitialHealth := scaleToWidth(s.MaxHealth, s.MaxHealth, healthbarWidth) + 4
+	healthbarBorder := rl.NewRectangle(s.Pos.X, s.Pos.Y-10, scaledDownInitialHealth, healthbarHeight)
+	rl.DrawRectangleLinesEx(healthbarBorder, 2, rl.White)
+	scaledDownCurrentHealth := scaleToWidth(s.Health, s.MaxHealth, healthbarWidth)
+	healthbar := rl.Rectangle{
+		X:      s.Pos.X + 2,
+		Y:      s.Pos.Y - 8,
+		Width:  scaledDownCurrentHealth,
+		Height: healthbarHeight - 4,
+	}
+	rl.DrawRectangleRec(healthbar, rl.Green)
+	// draw reload bar above health bar
+	scaledReloadProgress := scaleToWidth(s.ShootAgo, s.ShootingRate, reloadBarWidth)
+	reloadBar := rl.Rectangle{
+		X:      s.Pos.X,
+		Y:      s.Pos.Y - 20,
+		Width:  scaledReloadProgress,
+		Height: reloadBarHeight,
+	}
+	reloadColor := rl.Red
+	if s.ShootAgo >= s.ShootingRate {
+		reloadColor = rl.SkyBlue
+	}
+	rl.DrawRectangleRec(reloadBar, reloadColor)
 
 	// draw circle with radius of shooting range
 	rl.DrawCircleLines(int32(s.Pos.X), int32(s.Pos.Y), s.ShootingRange, rl.White)
 
-	// TODO: draw reload bar
-
 	rl.DrawTexture(texture, int32(s.Pos.X), int32(s.Pos.Y), rl.White)
+}
+
+func scaleToWidth(health, max, width float32) float32 {
+	return rlutils.ScaleValueToSize(health, 0, max, 0, width)
 }
 
 func (s *Soldier) MoveTowards(pos rl.Vector2) rl.Vector2 {
@@ -87,6 +129,20 @@ func (s *Soldier) MoveTowards(pos rl.Vector2) rl.Vector2 {
 
 func (s *Soldier) WithinShootingRange(pos rl.Vector2) bool {
 	return rl.Vector2Distance(s.Pos, pos) < s.ShootingRange
+}
+
+func (s *Soldier) CanShoot() bool {
+	return s.ShootAgo >= s.ShootingRate
+}
+
+func (s *Soldier) Shoot() {
+	s.ShootAgo = 0
+}
+
+func (s *Soldier) ProgressTime(dt float32) {
+	if s.ShootAgo < s.ShootingRate {
+		s.ShootAgo += dt
+	}
 }
 
 func (s *Soldier) GetPos() rl.Vector2 {

@@ -9,7 +9,7 @@ import (
 const (
 	initialSpeed  = 1
 	initialHealth = 10
-	initialAttack = 10
+	initialDamage = 10
 	initialState  = Walking
 	initialReward = 10
 )
@@ -29,8 +29,8 @@ type Enemy struct {
 	Reward int
 
 	Speed  float32
-	Health int
-	Attack int
+	Health float32
+	Damage float32
 
 	Texture rl.Texture2D
 }
@@ -45,7 +45,7 @@ func FromPos(pos rl.Vector2, texture rl.Texture2D) *Enemy {
 
 		Speed:  initialSpeed,
 		Health: initialHealth,
-		Attack: initialAttack,
+		Damage: initialDamage,
 
 		Texture: texture,
 	}

@@ -18,7 +18,7 @@ type Projectile struct {
 	Velocity rl.Vector2
 
 	Radius float32
-	Damage int
+	Damage float32
 }
 
 func FromPos(pos, velocity rl.Vector2) *Projectile {

@@ -76,7 +76,6 @@ var (
 
 var (
 	enemySpawnRate = float32(1)
-	shootingRate   = float32(2)
 )
 
 func main() {
@@ -329,7 +328,6 @@ func (gs *gameState) addFlare() {
 func (gs *gameState) renderFlares() {
 	for _, f := range gs.flares {
 		f.Draw()
-		gs.quadtree.Insert(f.ID, f.Boundaries(), f)
 	}
 }
 
@@ -339,7 +337,9 @@ func (gs *gameState) dimFlares() {
 		f.Dim()
 		if f.WentOut() {
 			wentOutCount++
+			continue
 		}
+		gs.quadtree.Insert(f.ID, f.Boundaries(), f)
 	}
 
 	if wentOutCount > 0 {
@@ -420,7 +420,7 @@ func (gs *gameState) moveEnemies() []*enemy.Enemy {
 
 		for _, c := range soldierCollissions {
 			if soldier, ok := c.Value.(*soldier.Soldier); ok {
-				soldier.Health -= e.Attack
+				soldier.Health -= e.Damage
 				e.State = enemy.Melee
 				newPosition = e.Pos // don't move if collission
 			}
@@ -464,9 +464,9 @@ func (gs *gameState) cleanupDeadSoldiers() {
 
 func (gs *gameState) moveSoldiers(flaredEnemies []*enemy.Enemy) {
 	for _, s := range gs.soldiers {
-		s.ShootAgo += rl.GetFrameTime()
+		s.ProgressTime(rl.GetFrameTime())
 
-		s.State = soldier.Walking
+		s.State = soldier.Standing
 
 		soldierBoundaries := rlutils.TextureBoundaries(s.Walking, s.Pos)
 		collissions := gs.quadtree.Query(soldierBoundaries)
@@ -476,18 +476,18 @@ func (gs *gameState) moveSoldiers(flaredEnemies []*enemy.Enemy) {
 			switch val := c.Value.(type) {
 			case *enemy.Enemy:
 				s.State = soldier.Melee
-				val.Health -= s.Attack
+				val.Health -= s.Damage
 			}
 		}
 
-		if s.State == soldier.Walking {
+		if s.State == soldier.Standing {
 			// try to find shooting target
 			nearestEnemy := findNearest(flaredEnemies, s.Pos)
 			if nearestEnemy != nil &&
 				s.WithinShootingRange(nearestEnemy.Pos) &&
-				s.ShootAgo > shootingRate {
+				s.CanShoot() {
+				s.Shoot()
 				s.State = soldier.Shooting
-				s.ShootAgo = 0
 				// spawn projectile
 				projectileVelocity := rl.Vector2Subtract(nearestEnemy.Pos, s.Pos)
 				newProjectile := projectile.FromPos(s.Pos, projectileVelocity)
