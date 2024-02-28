@@ -47,10 +47,17 @@ var (
 		Width:  screenWidth * 0.15,
 		Height: arenaHeight,
 	}
+
+	itemStorageBoundaries = rl.Rectangle{
+		X:      screenWidth * 0.85,
+		Y:      headerBoundaries.Height,
+		Width:  screenWidth * 0.15,
+		Height: arenaHeight,
+	}
 )
 
 var (
-	arenaWidth float32 = screenWidth - soldierStorageBoundaries.Width
+	arenaWidth float32 = screenWidth - soldierStorageBoundaries.Width - itemStorageBoundaries.Width
 )
 
 var arenaBoundaries = rl.Rectangle{
@@ -210,6 +217,7 @@ func (gs *gameState) renderGame() {
 	gs.renderHeader()
 	gs.renderFooter()
 	gs.renderSoldierStorage()
+	gs.renderItemSelector()
 	gs.placeDraggedSoldier()
 	gs.renderDraggingSoldier()
 	gs.renderFlares()
@@ -368,6 +376,62 @@ func (gs *gameState) renderSoldierStorage() {
 				gs.draggingSoldier = soldier.FromPos(mousePos, item.icon, item.icon)
 				item.count--
 			}
+		}
+	}
+}
+
+func (gs *gameState) renderItemSelector() {
+	rl.DrawRectangleRec(itemStorageBoundaries, rl.Beige)
+
+	type itemStorageItem struct {
+		name string
+		icon rl.Texture2D
+		// TODO: add constructor for soldier
+		count       int
+		description string
+	}
+
+	mockItems := []*itemStorageItem{
+		{name: "Flare", icon: gs.assets.soldier, count: gs.flareCount, description: "Reveals enemies"},
+		{name: "Grenade", icon: gs.assets.soldier, count: 0, description: "Deals damage to enemies"},
+	}
+
+	itemWidth := soldierStorageBoundaries.Width - 20 // 10px margin on each side
+	itemHeight := float32(100)
+	for i, item := range mockItems {
+		itemBoundaries := rl.Rectangle{
+			X:      itemStorageBoundaries.X + 10,
+			Y:      itemStorageBoundaries.Y + float32(i)*(itemHeight+10),
+			Width:  itemWidth,
+			Height: itemHeight,
+		}
+		rl.DrawRectangleLinesEx(itemBoundaries, 2, rl.White)
+		// draw count in top left corner and icon in center
+		countText := strconv.Itoa(item.count)
+		countTextPos := rl.Vector2{
+			X: itemBoundaries.X + 10,
+			Y: itemBoundaries.Y + 10,
+		}
+		rl.DrawText(countText, int32(countTextPos.X), int32(countTextPos.Y), 20, rl.White)
+
+		iconPos := rl.Vector2{
+			X: itemBoundaries.X + itemBoundaries.Width/2 - float32(item.icon.Width/2),
+			Y: itemBoundaries.Y + itemBoundaries.Height/2 - float32(item.icon.Height/2),
+		}
+		rl.DrawTextureV(item.icon, iconPos, rl.White)
+
+		// draw name in botton left corner of the item
+		namePos := rl.Vector2{
+			X: itemBoundaries.X + 5,
+			Y: itemBoundaries.Y + itemBoundaries.Height - 25,
+		}
+		// TODO: adjust font size based on name length
+		rl.DrawText(item.name, int32(namePos.X), int32(namePos.Y), 20, rl.White)
+
+		// display description when hovered
+		mousePos := rl.GetMousePosition()
+		if rl.CheckCollisionPointRec(mousePos, itemBoundaries) {
+			drawDescription(item.description)
 		}
 	}
 }
