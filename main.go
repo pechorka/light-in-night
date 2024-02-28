@@ -26,12 +26,34 @@ const (
 )
 
 var (
-	quadtreeCapacity = 10
-	quadtreeBounds   = rl.Rectangle{
-		X: 0, Y: 0,
-		Width:  float32(screenWidth),
-		Height: float32(screenHeight),
+	headerBoundaries = rl.Rectangle{
+		X:      0,
+		Y:      0,
+		Width:  screenWidth,
+		Height: screenHeight * 0.05,
 	}
+	footerBoundaries = rl.Rectangle{
+		X:      0,
+		Y:      screenHeight * 0.85,
+		Width:  screenWidth,
+		Height: screenHeight * 0.15,
+	}
+)
+
+var (
+	arenaWidth  float32 = screenWidth
+	arenaHeight float32 = screenHeight - headerBoundaries.Height - footerBoundaries.Height
+)
+
+var arenaBoundaries = rl.Rectangle{
+	X:      0,
+	Y:      headerBoundaries.Height,
+	Width:  arenaWidth,
+	Height: arenaHeight,
+}
+
+const (
+	quadtreeCapacity = 10
 )
 
 var (
@@ -67,8 +89,8 @@ func main() {
 			soldierMelee: loadTextureFromImage("assets/soldier_melee.png"),
 			enemy:        loadTextureFromImage("assets/enemy.png"),
 		},
-		prevQuadtree: quadtree.NewQuadtree(quadtreeBounds, quadtreeCapacity),
-		quadtree:     quadtree.NewQuadtree(quadtreeBounds, quadtreeCapacity),
+		prevQuadtree: quadtree.NewQuadtree(arenaBoundaries, quadtreeCapacity),
+		quadtree:     quadtree.NewQuadtree(arenaBoundaries, quadtreeCapacity),
 
 		gameScreen: gameScreenSpawnSoldier,
 	}
@@ -126,16 +148,13 @@ type gameState struct {
 	enemeSpawnedAgo float32
 	// TODO: add money
 	score int
+
+	gameTime float32
 }
 
 func (gs *gameState) renderFrame() {
 	if rl.IsKeyPressed(rl.KeySpace) {
 		gs.paused = !gs.paused
-	}
-
-	if gs.paused {
-		rlutils.DrawTextAtCenterOfScreen("Paused", screenWidth, screenHeight, centerLabelFontSize, centerLabelColor)
-		return
 	}
 
 	gs.prevQuadtree, gs.quadtree = gs.quadtree, gs.prevQuadtree
@@ -175,43 +194,136 @@ func (gs *gameState) renderSoldierSpawn() {
 }
 
 func (gs *gameState) renderGame() {
-	// TODO: add header and footer
 	if len(gs.soldiers) == 0 {
 		gs.gameScreen = gameScreenOver
 		return
 	}
 
-	renderHelpLabels(
-		"Click to place flares",
-		"Press space to pause",
-		"Score: "+strconv.Itoa(gs.score),
-	)
+	if !gs.paused {
+		gs.gameTime += rl.GetFrameTime()
 
+		gs.addFlare()
+		gs.dimFlares()
+
+		gs.moveProjectiles()
+
+		gs.cleanupDeadEnemies()
+		gs.spawnEnemies()
+		flaredEnemies := gs.moveEnemies()
+
+		gs.cleanupDeadSoldiers()
+		gs.moveSoldiers(flaredEnemies)
+	}
+
+	gs.renderHeader()
+	gs.renderFooter()
+	gs.renderFlares()
+	gs.renderProjectiles()
+	gs.renderEnemies()
+	gs.renderSoldiers()
+}
+
+func (gs *gameState) renderHeader() {
+	rl.DrawRectangleRec(headerBoundaries, rl.Gray)
+	// Render header data. Example:
+	// Time: 1:15 Score: 100 Money: 100
+
+	time := int(gs.gameTime)
+	minutes := time / 60
+	seconds := time % 60
+	timeText := "Time: " + strconv.Itoa(minutes) + ":" + strconv.Itoa(seconds)
+	scoreText := "Score: " + strconv.Itoa(gs.score)
+
+	timeTextWidth := rl.MeasureText(timeText, 20)
+
+	widthOffset := int32(10)
+	rl.DrawText(timeText, widthOffset, 10, 20, rl.White)
+	widthOffset += timeTextWidth + 10
+	// TODO: score is flickering depending on the time
+	rl.DrawText(scoreText, widthOffset, 10, 20, rl.White)
+	// TODO: add money
+
+	if gs.paused {
+		rl.DrawText("Paused", int32(headerBoundaries.Width-100), 10, 20, rl.White)
+	}
+}
+
+func (gs *gameState) renderFooter() {
+	rl.DrawRectangleRec(footerBoundaries, rl.Gray)
+	// footer should have shop items in squares
+	// each square should have price and icon
+	// when hovered - show description
+	type shopItem struct {
+		price       int
+		name        string
+		description string
+		icon        rl.Texture2D
+	}
+
+	// TODO: shop can have items to increase difficulty, but with higher rewards
+	// for example: princess that needs to be protected for some time, but gives a lot of money
+	mockItems := []shopItem{
+		{price: 10, name: "Soldier", icon: gs.assets.soldier, description: "Basic soldier"},
+		{price: 20, name: "Flare", icon: gs.assets.soldier, description: "Reveals enemies"},
+		{price: 30, name: "Turret", icon: gs.assets.soldier, description: "Shoots enemies"},
+		{price: 40, name: "Princess", icon: gs.assets.soldier, description: "Needs to be protected"},
+		{price: 50, name: "Dragon", icon: gs.assets.soldier, description: "Does a lot of damage"},
+	}
+	itemWidth := float32(100)
+	itemHeight := footerBoundaries.Height - 20 // 10px margin on each side
+	for i, item := range mockItems {
+		itemBoundaries := rl.Rectangle{
+			X:      footerBoundaries.X + 10 + float32(i)*(itemWidth+10),
+			Y:      footerBoundaries.Y + 10,
+			Width:  itemWidth,
+			Height: itemHeight,
+		}
+		rl.DrawRectangleLinesEx(itemBoundaries, 2, rl.White)
+		// draw price in top left corner and icon in center
+		priceText := strconv.Itoa(item.price)
+		priceTextPos := rl.Vector2{
+			X: itemBoundaries.X + 10,
+			Y: itemBoundaries.Y + 10,
+		}
+		rl.DrawText(priceText, int32(priceTextPos.X), int32(priceTextPos.Y), 20, rl.White)
+
+		iconPos := rl.Vector2{
+			X: itemBoundaries.X + itemBoundaries.Width/2 - float32(item.icon.Width/2),
+			Y: itemBoundaries.Y + itemBoundaries.Height/2 - float32(item.icon.Height/2),
+		}
+		rl.DrawTextureV(item.icon, iconPos, rl.White)
+
+		// draw name in botton left corner of the item
+		namePos := rl.Vector2{
+			X: itemBoundaries.X + 5,
+			Y: itemBoundaries.Y + itemBoundaries.Height - 25,
+		}
+		rl.DrawText(item.name, int32(namePos.X), int32(namePos.Y), 20, rl.White)
+
+		// display description when hovered
+		if rl.CheckCollisionPointRec(rl.GetMousePosition(), itemBoundaries) {
+			// description should be displayed above the item with border
+			descriptionBoundaries := rl.Rectangle{
+				X:      footerBoundaries.X + 10,
+				Y:      footerBoundaries.Y - 10 - 100,
+				Width:  screenWidth - 20,
+				Height: 100,
+			}
+			rl.DrawRectangleLinesEx(descriptionBoundaries, 2, rl.White)
+			rl.DrawText(item.description, int32(descriptionBoundaries.X+5), int32(descriptionBoundaries.Y+5), 20, rl.White)
+		}
+	}
+}
+
+func (gs *gameState) addFlare() {
 	if rl.IsMouseButtonPressed(rl.MouseLeftButton) {
 		mousePos := rl.GetMousePosition()
+		if !rl.CheckCollisionPointRec(mousePos, arenaBoundaries) {
+			return
+		}
 		newFlare := flare.FromPos(mousePos, flareRadius, flareCenterColor, flareEdgeColor)
 		gs.flares = append(gs.flares, newFlare)
 	}
-
-	gs.renderFlares()
-
-	gs.moveProjectiles()
-	gs.renderProjectiles()
-
-	gs.cleanupDeadEnemies()
-	gs.spawnEnemies()
-	flaredEnemies := gs.moveEnemies()
-	gs.renderEnemies()
-
-	gs.cleanupDeadSoldiers()
-	gs.moveSoldiers(flaredEnemies)
-	gs.renderSoldiers()
-
-	gs.dimFlares()
-
-	// TODO: render game shop as footer
-	// TODO: shop can have items to increase difficulty, but with higher rewards
-	// for example: princess that needs to be protected for some time, but gives a lot of money
 }
 
 func (gs *gameState) renderFlares() {
@@ -239,7 +351,7 @@ func (gs *gameState) moveProjectiles() {
 	activeProjectiles := gs.projectiles[:0]
 	for _, p := range gs.projectiles {
 		p.Move()
-		if p.Pos.X < 0 || p.Pos.X > screenWidth || p.Pos.Y < 0 || p.Pos.Y > screenHeight {
+		if p.Pos.X < 0 || p.Pos.X > arenaWidth || p.Pos.Y < 0 || p.Pos.Y > arenaHeight {
 			continue
 		}
 		gs.quadtree.Insert(p.ID, p.Boundaries(), p)
@@ -282,8 +394,8 @@ func (gs *gameState) spawnEnemies() {
 func (gs *gameState) findPositionForEnemy() rl.Vector2 {
 	for {
 		pos := rl.Vector2{
-			X: float32(rand.Intn(screenWidth)),
-			Y: float32(rand.Intn(screenHeight)),
+			X: float32(rand.Intn(int(arenaWidth))),
+			Y: float32(rand.Intn(int(arenaHeight))),
 		}
 
 		boundaries := rlutils.TextureBoundaries(gs.assets.enemy, pos)
