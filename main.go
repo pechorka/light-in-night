@@ -1019,21 +1019,31 @@ func (gs *gameState) renderProjectiles() {
 	}
 }
 
-func newEnemy(pos rl.Vector2, assets *gameAssets, time float32) enemy {
-	// select enemy type
-	// 0 - basic
-	// 1 - fast
-	// 2 - tank
+const (
+	halfMaxInt    = math.MaxInt / 2
+	quorterMaxInt = halfMaxInt / 2
+	tenthMaxInt   = math.MaxInt / 10
+)
 
-	switch rand.Intn(3) {
-	case 0:
+var (
+	basicRange = [2]int{0, halfMaxInt}                                        // 0 - 50%
+	fastRange  = [2]int{halfMaxInt, halfMaxInt + quorterMaxInt + tenthMaxInt} // 50% - 85%
+	// tank is default case (15%)
+)
+
+func inRange(x int, r [2]int) bool {
+	return x >= r[0] && x < r[1]
+}
+
+func newEnemy(pos rl.Vector2, assets *gameAssets, time float32) enemy {
+	n := rand.Intn(math.MaxInt)
+	switch {
+	case inRange(n, basicRange):
 		return basic.FromPos(pos, assets.enemy.basic, time)
-	case 1:
+	case inRange(n, fastRange):
 		return fast.FromPos(pos, assets.enemy.fast, time)
-	case 2:
-		return tank.FromPos(pos, assets.enemy.tank, time)
 	default:
-		return basic.FromPos(pos, assets.enemy.basic, time)
+		return tank.FromPos(pos, assets.enemy.tank, time)
 	}
 }
 
