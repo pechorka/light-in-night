@@ -22,53 +22,6 @@ import (
 var assets embed.FS
 
 const (
-	screenWidth  = 800
-	screenHeight = 600
-)
-
-var (
-	headerBoundaries = rl.Rectangle{
-		X:      0,
-		Y:      0,
-		Width:  screenWidth,
-		Height: screenHeight * 0.05,
-	}
-	footerBoundaries = rl.Rectangle{
-		X:      0,
-		Y:      screenHeight * 0.85,
-		Width:  screenWidth,
-		Height: screenHeight * 0.15,
-	}
-
-	arenaHeight float32 = screenHeight - headerBoundaries.Height - footerBoundaries.Height
-
-	soldierStorageBoundaries = rl.Rectangle{
-		X:      0,
-		Y:      headerBoundaries.Height,
-		Width:  screenWidth * 0.15,
-		Height: arenaHeight,
-	}
-
-	itemStorageBoundaries = rl.Rectangle{
-		X:      screenWidth * 0.85,
-		Y:      headerBoundaries.Height,
-		Width:  screenWidth * 0.15,
-		Height: arenaHeight,
-	}
-)
-
-var (
-	arenaWidth float32 = screenWidth - soldierStorageBoundaries.Width - itemStorageBoundaries.Width
-)
-
-var arenaBoundaries = rl.Rectangle{
-	X:      soldierStorageBoundaries.Width,
-	Y:      headerBoundaries.Height,
-	Width:  arenaWidth,
-	Height: arenaHeight,
-}
-
-const (
 	quadtreeCapacity = 10
 )
 
@@ -94,17 +47,26 @@ var (
 )
 
 func main() {
-	rl.InitWindow(screenWidth, screenHeight, "Click to survive!")
+
+	gb := &gameBoundaries{
+		screenWidth:  800,
+		screenHeight: 600,
+	}
+	gb.updateBoundaries()
+
+	rl.SetConfigFlags(rl.FlagWindowResizable)
+	rl.InitWindow(int32(gb.screenWidth), int32(gb.screenHeight), "Click to survive!")
 	rl.SetTargetFPS(60)
 
 	gs := &gameState{
+		boundaries: gb,
 		assets: &gameAssets{
 			soldier:      loadTextureFromImage("assets/soldier.png"),
 			soldierMelee: loadTextureFromImage("assets/soldier_melee.png"),
 			enemy:        loadTextureFromImage("assets/enemy.png"),
 		},
-		prevQuadtree: quadtree.NewQuadtree(arenaBoundaries, quadtreeCapacity),
-		quadtree:     quadtree.NewQuadtree(arenaBoundaries, quadtreeCapacity),
+		prevQuadtree: quadtree.NewQuadtree(gb.arenaBoundaries, quadtreeCapacity),
+		quadtree:     quadtree.NewQuadtree(gb.arenaBoundaries, quadtreeCapacity),
 
 		itemStorage: &itemStorage{
 			flareCount:   initialFlareCount,
@@ -116,7 +78,10 @@ func main() {
 		paused:     true,
 	}
 
-	gs.soldiers = append(gs.soldiers, soldier.FromPos(rl.Vector2{X: arenaWidth / 2, Y: arenaHeight / 2}, gs.assets.soldier, gs.assets.soldierMelee))
+	gs.soldiers = append(gs.soldiers, soldier.FromPos(rl.Vector2{
+		X: gb.arenaBoundaries.Width / 2,
+		Y: gb.arenaBoundaries.Height / 2,
+	}, gs.assets.soldier, gs.assets.soldierMelee))
 
 	for !rl.WindowShouldClose() {
 		rl.BeginDrawing()
@@ -156,7 +121,65 @@ const (
 	// TODO: add leaderboard screen
 )
 
+type gameBoundaries struct {
+	screenWidth  int
+	screenHeight int
+
+	screenBoundaries rl.Rectangle
+	arenaBoundaries  rl.Rectangle
+	headerBoundaries rl.Rectangle
+	footerBoundaries rl.Rectangle
+}
+
+func (gb *gameBoundaries) update() bool {
+	newWidth := rl.GetScreenWidth()
+	newHeight := rl.GetScreenHeight()
+	if newWidth == gb.screenWidth && newHeight == gb.screenHeight {
+		return false
+	}
+
+	gb.screenWidth = newWidth
+	gb.screenHeight = newHeight
+	gb.updateBoundaries()
+
+	return true
+}
+
+func (gb *gameBoundaries) updateBoundaries() {
+	gb.screenBoundaries = rl.Rectangle{
+		X:      0,
+		Y:      0,
+		Width:  float32(gb.screenWidth),
+		Height: float32(gb.screenHeight),
+	}
+
+	gb.headerBoundaries = rl.Rectangle{
+		X:      0,
+		Y:      0,
+		Width:  gb.screenBoundaries.Width,
+		Height: gb.screenBoundaries.Height * 0.05,
+	}
+
+	gb.footerBoundaries = rl.Rectangle{
+		X:      0,
+		Y:      gb.screenBoundaries.Height * 0.85,
+		Width:  gb.screenBoundaries.Width,
+		Height: gb.screenBoundaries.Height * 0.15,
+	}
+
+	arenaHeight := gb.screenBoundaries.Height - gb.headerBoundaries.Height - gb.footerBoundaries.Height
+	arenaWidth := gb.screenBoundaries.Width
+
+	gb.arenaBoundaries = rl.Rectangle{
+		X:      gb.screenBoundaries.Width * 0.15,
+		Y:      gb.headerBoundaries.Height,
+		Width:  arenaWidth,
+		Height: arenaHeight,
+	}
+}
+
 type gameState struct {
+	boundaries   *gameBoundaries
 	assets       *gameAssets
 	prevQuadtree *quadtree.Quadtree
 	quadtree     *quadtree.Quadtree
@@ -177,7 +200,7 @@ type gameState struct {
 
 	gameTime float32
 
-	draggingSoldier *soldier.Soldier
+	// draggingSoldier *soldier.Soldier
 }
 
 type consumable int
@@ -195,6 +218,11 @@ type itemStorage struct {
 func (gs *gameState) renderFrame() {
 	if rl.IsKeyPressed(rl.KeySpace) {
 		gs.paused = !gs.paused
+	}
+
+	if gs.boundaries.update() {
+		gs.prevQuadtree = quadtree.NewQuadtree(gs.boundaries.arenaBoundaries, quadtreeCapacity)
+		gs.quadtree = quadtree.NewQuadtree(gs.boundaries.arenaBoundaries, quadtreeCapacity)
 	}
 
 	gs.prevQuadtree, gs.quadtree = gs.quadtree, gs.prevQuadtree
@@ -234,10 +262,10 @@ func (gs *gameState) renderGame() {
 
 	gs.renderHeader()
 	gs.renderFooter()
-	gs.renderSoldierStorage()
-	gs.renderItemSelector()
-	gs.placeDraggedSoldier()
-	gs.renderDraggingSoldier()
+	// gs.renderSoldierStorage()
+	// gs.renderItemSelector()
+	// gs.placeDraggedSoldier()
+	// gs.renderDraggingSoldier()
 	gs.renderFlares()
 	gs.renderGrenades()
 	gs.renderProjectiles()
@@ -246,6 +274,7 @@ func (gs *gameState) renderGame() {
 }
 
 func (gs *gameState) renderHeader() {
+	headerBoundaries := gs.boundaries.headerBoundaries
 	rl.DrawRectangleRec(headerBoundaries, rl.Gray)
 	// Render header data. Example:
 	// Time: 1:15 Score: 100 Money: 100
@@ -271,6 +300,7 @@ func (gs *gameState) renderHeader() {
 }
 
 func (gs *gameState) renderFooter() {
+	footerBoundaries := gs.boundaries.footerBoundaries
 	rl.DrawRectangleRec(footerBoundaries, rl.Gray)
 	// footer should have shop items in squares
 	// each square should have price and icon
@@ -325,7 +355,7 @@ func (gs *gameState) renderFooter() {
 		// display description when hovered
 		if rl.CheckCollisionPointRec(rl.GetMousePosition(), itemBoundaries) {
 			// description should be displayed above the item with border
-			drawDescription(item.description)
+			gs.drawDescription(item.description)
 
 			if rl.IsMouseButtonPressed(rl.MouseLeftButton) {
 				if i == 1 { // flare
@@ -336,158 +366,158 @@ func (gs *gameState) renderFooter() {
 	}
 }
 
-func (gs *gameState) renderSoldierStorage() {
-	rl.DrawRectangleRec(soldierStorageBoundaries, rl.Blue)
+// func (gs *gameState) renderSoldierStorage() {
+// 	rl.DrawRectangleRec(soldierStorageBoundaries, rl.Blue)
 
-	type soldierStorageItem struct {
-		name string
-		icon rl.Texture2D
-		// TODO: add constructor for soldier
-		count       int
-		description string
-	}
+// 	type soldierStorageItem struct {
+// 		name string
+// 		icon rl.Texture2D
+// 		// TODO: add constructor for soldier
+// 		count       int
+// 		description string
+// 	}
 
-	mockItems := []*soldierStorageItem{
-		{name: "Soldier", icon: gs.assets.soldier, count: 10, description: "Basic soldier"},
-		{name: "Commander", icon: gs.assets.soldier, count: 5, description: "Increases damage"},
-		{name: "Medic", icon: gs.assets.soldier, count: 3, description: "Heals soldiers"},
-	}
+// 	mockItems := []*soldierStorageItem{
+// 		{name: "Soldier", icon: gs.assets.soldier, count: 10, description: "Basic soldier"},
+// 		{name: "Commander", icon: gs.assets.soldier, count: 5, description: "Increases damage"},
+// 		{name: "Medic", icon: gs.assets.soldier, count: 3, description: "Heals soldiers"},
+// 	}
 
-	itemWidth := soldierStorageBoundaries.Width - 20 // 10px margin on each side
-	itemHeight := float32(100)
-	for i, item := range mockItems {
-		itemBoundaries := rl.Rectangle{
-			X:      soldierStorageBoundaries.X + 10,
-			Y:      soldierStorageBoundaries.Y + float32(i)*(itemHeight+10),
-			Width:  itemWidth,
-			Height: itemHeight,
-		}
-		rl.DrawRectangleLinesEx(itemBoundaries, 2, rl.White)
-		// draw count in top left corner and icon in center
-		countText := strconv.Itoa(item.count)
-		countTextPos := rl.Vector2{
-			X: itemBoundaries.X + 10,
-			Y: itemBoundaries.Y + 10,
-		}
-		rl.DrawText(countText, int32(countTextPos.X), int32(countTextPos.Y), 20, rl.White)
+// 	itemWidth := soldierStorageBoundaries.Width - 20 // 10px margin on each side
+// 	itemHeight := float32(100)
+// 	for i, item := range mockItems {
+// 		itemBoundaries := rl.Rectangle{
+// 			X:      soldierStorageBoundaries.X + 10,
+// 			Y:      soldierStorageBoundaries.Y + float32(i)*(itemHeight+10),
+// 			Width:  itemWidth,
+// 			Height: itemHeight,
+// 		}
+// 		rl.DrawRectangleLinesEx(itemBoundaries, 2, rl.White)
+// 		// draw count in top left corner and icon in center
+// 		countText := strconv.Itoa(item.count)
+// 		countTextPos := rl.Vector2{
+// 			X: itemBoundaries.X + 10,
+// 			Y: itemBoundaries.Y + 10,
+// 		}
+// 		rl.DrawText(countText, int32(countTextPos.X), int32(countTextPos.Y), 20, rl.White)
 
-		iconPos := rl.Vector2{
-			X: itemBoundaries.X + itemBoundaries.Width/2 - float32(item.icon.Width/2),
-			Y: itemBoundaries.Y + itemBoundaries.Height/2 - float32(item.icon.Height/2),
-		}
-		rl.DrawTextureV(item.icon, iconPos, rl.White)
+// 		iconPos := rl.Vector2{
+// 			X: itemBoundaries.X + itemBoundaries.Width/2 - float32(item.icon.Width/2),
+// 			Y: itemBoundaries.Y + itemBoundaries.Height/2 - float32(item.icon.Height/2),
+// 		}
+// 		rl.DrawTextureV(item.icon, iconPos, rl.White)
 
-		// draw name in botton left corner of the item
-		namePos := rl.Vector2{
-			X: itemBoundaries.X + 5,
-			Y: itemBoundaries.Y + itemBoundaries.Height - 25,
-		}
-		// TODO: adjust font size based on name length
-		rl.DrawText(item.name, int32(namePos.X), int32(namePos.Y), 20, rl.White)
+// 		// draw name in botton left corner of the item
+// 		namePos := rl.Vector2{
+// 			X: itemBoundaries.X + 5,
+// 			Y: itemBoundaries.Y + itemBoundaries.Height - 25,
+// 		}
+// 		// TODO: adjust font size based on name length
+// 		rl.DrawText(item.name, int32(namePos.X), int32(namePos.Y), 20, rl.White)
 
-		// display description when hovered
-		mousePos := rl.GetMousePosition()
-		if rl.CheckCollisionPointRec(mousePos, itemBoundaries) {
-			drawDescription(item.description)
+// 		// display description when hovered
+// 		mousePos := rl.GetMousePosition()
+// 		if rl.CheckCollisionPointRec(mousePos, itemBoundaries) {
+// 			drawDescription(item.description)
 
-			// TODO: move to separate function
-			if rl.IsMouseButtonPressed(rl.MouseLeftButton) && item.count > 0 {
-				gs.draggingSoldier = soldier.FromPos(mousePos, item.icon, item.icon)
-				item.count--
-			}
-		}
-	}
-}
+// 			// TODO: move to separate function
+// 			if rl.IsMouseButtonPressed(rl.MouseLeftButton) && item.count > 0 {
+// 				gs.draggingSoldier = soldier.FromPos(mousePos, item.icon, item.icon)
+// 				item.count--
+// 			}
+// 		}
+// 	}
+// }
 
-func (gs *gameState) renderItemSelector() {
-	rl.DrawRectangleRec(itemStorageBoundaries, rl.Beige)
+// func (gs *gameState) renderItemSelector() {
+// 	rl.DrawRectangleRec(itemStorageBoundaries, rl.Beige)
 
-	type itemStorageItem struct {
-		name string
-		icon rl.Texture2D
-		// TODO: add constructor for soldier
-		count       int
-		description string
-		consumable  consumable
-	}
+// 	type itemStorageItem struct {
+// 		name string
+// 		icon rl.Texture2D
+// 		// TODO: add constructor for soldier
+// 		count       int
+// 		description string
+// 		consumable  consumable
+// 	}
 
-	items := []*itemStorageItem{
-		{name: "Flare", icon: gs.assets.soldier, count: gs.itemStorage.flareCount, description: "Reveals enemies", consumable: flares},
-		{name: "Grenade", icon: gs.assets.soldier, count: gs.itemStorage.grenadeCount, description: "Deals damage", consumable: grenades},
-	}
+// 	items := []*itemStorageItem{
+// 		{name: "Flare", icon: gs.assets.soldier, count: gs.itemStorage.flareCount, description: "Reveals enemies", consumable: flares},
+// 		{name: "Grenade", icon: gs.assets.soldier, count: gs.itemStorage.grenadeCount, description: "Deals damage", consumable: grenades},
+// 	}
 
-	itemWidth := soldierStorageBoundaries.Width - 20 // 10px margin on each side
-	itemHeight := float32(100)
-	for i, item := range items {
+// 	itemWidth := soldierStorageBoundaries.Width - 20 // 10px margin on each side
+// 	itemHeight := float32(100)
+// 	for i, item := range items {
 
-		itemBoundaries := rl.Rectangle{
-			X:      itemStorageBoundaries.X + 10,
-			Y:      itemStorageBoundaries.Y + float32(i)*(itemHeight+10),
-			Width:  itemWidth,
-			Height: itemHeight,
-		}
-		mousePos := rl.GetMousePosition()
-		if rl.CheckCollisionPointRec(mousePos, itemBoundaries) {
-			drawDescription(item.description)
-			if rl.IsMouseButtonPressed(rl.MouseLeftButton) {
-				gs.selectedConsumable = item.consumable
-			}
-		}
+// 		itemBoundaries := rl.Rectangle{
+// 			X:      itemStorageBoundaries.X + 10,
+// 			Y:      itemStorageBoundaries.Y + float32(i)*(itemHeight+10),
+// 			Width:  itemWidth,
+// 			Height: itemHeight,
+// 		}
+// 		mousePos := rl.GetMousePosition()
+// 		if rl.CheckCollisionPointRec(mousePos, itemBoundaries) {
+// 			drawDescription(item.description)
+// 			if rl.IsMouseButtonPressed(rl.MouseLeftButton) {
+// 				gs.selectedConsumable = item.consumable
+// 			}
+// 		}
 
-		color := rl.White
-		if gs.selectedConsumable == item.consumable {
-			color = rl.Green
-		}
+// 		color := rl.White
+// 		if gs.selectedConsumable == item.consumable {
+// 			color = rl.Green
+// 		}
 
-		rl.DrawRectangleLinesEx(itemBoundaries, 2, color)
-		// draw count in top left corner and icon in center
-		countText := strconv.Itoa(item.count)
-		countTextPos := rl.Vector2{
-			X: itemBoundaries.X + 10,
-			Y: itemBoundaries.Y + 10,
-		}
-		rl.DrawText(countText, int32(countTextPos.X), int32(countTextPos.Y), 20, rl.White)
+// 		rl.DrawRectangleLinesEx(itemBoundaries, 2, color)
+// 		// draw count in top left corner and icon in center
+// 		countText := strconv.Itoa(item.count)
+// 		countTextPos := rl.Vector2{
+// 			X: itemBoundaries.X + 10,
+// 			Y: itemBoundaries.Y + 10,
+// 		}
+// 		rl.DrawText(countText, int32(countTextPos.X), int32(countTextPos.Y), 20, rl.White)
 
-		iconPos := rl.Vector2{
-			X: itemBoundaries.X + itemBoundaries.Width/2 - float32(item.icon.Width/2),
-			Y: itemBoundaries.Y + itemBoundaries.Height/2 - float32(item.icon.Height/2),
-		}
-		rl.DrawTextureV(item.icon, iconPos, rl.White)
+// 		iconPos := rl.Vector2{
+// 			X: itemBoundaries.X + itemBoundaries.Width/2 - float32(item.icon.Width/2),
+// 			Y: itemBoundaries.Y + itemBoundaries.Height/2 - float32(item.icon.Height/2),
+// 		}
+// 		rl.DrawTextureV(item.icon, iconPos, rl.White)
 
-		// draw name in botton left corner of the item
-		namePos := rl.Vector2{
-			X: itemBoundaries.X + 5,
-			Y: itemBoundaries.Y + itemBoundaries.Height - 25,
-		}
-		// TODO: adjust font size based on name length
-		rl.DrawText(item.name, int32(namePos.X), int32(namePos.Y), 20, rl.White)
-	}
-}
+// 		// draw name in botton left corner of the item
+// 		namePos := rl.Vector2{
+// 			X: itemBoundaries.X + 5,
+// 			Y: itemBoundaries.Y + itemBoundaries.Height - 25,
+// 		}
+// 		// TODO: adjust font size based on name length
+// 		rl.DrawText(item.name, int32(namePos.X), int32(namePos.Y), 20, rl.White)
+// 	}
+// }
 
-func (gs *gameState) placeDraggedSoldier() {
-	if gs.draggingSoldier == nil {
-		return
-	}
-	if !rl.IsMouseButtonPressed(rl.MouseLeftButton) {
-		return
-	}
-	mousePos := rl.GetMousePosition()
-	if !rl.CheckCollisionPointRec(mousePos, arenaBoundaries) {
-		return
-	}
-	gs.draggingSoldier.Pos = mousePos
-	gs.soldiers = append(gs.soldiers, gs.draggingSoldier)
-	gs.prevQuadtree.Insert(gs.draggingSoldier.ID, rlutils.TextureBoundaries(gs.draggingSoldier.Walking, gs.draggingSoldier.Pos), gs.draggingSoldier)
-	gs.draggingSoldier = nil
-}
+// func (gs *gameState) placeDraggedSoldier() {
+// 	if gs.draggingSoldier == nil {
+// 		return
+// 	}
+// 	if !rl.IsMouseButtonPressed(rl.MouseLeftButton) {
+// 		return
+// 	}
+// 	mousePos := rl.GetMousePosition()
+// 	if !rl.CheckCollisionPointRec(mousePos, arenaBoundaries) {
+// 		return
+// 	}
+// 	gs.draggingSoldier.Pos = mousePos
+// 	gs.soldiers = append(gs.soldiers, gs.draggingSoldier)
+// 	gs.prevQuadtree.Insert(gs.draggingSoldier.ID, rlutils.TextureBoundaries(gs.draggingSoldier.Walking, gs.draggingSoldier.Pos), gs.draggingSoldier)
+// 	gs.draggingSoldier = nil
+// }
 
-func (gs *gameState) renderDraggingSoldier() {
-	if gs.draggingSoldier == nil {
-		return
-	}
-	gs.draggingSoldier.Pos = rl.GetMousePosition()
-	gs.draggingSoldier.Draw()
-}
+// func (gs *gameState) renderDraggingSoldier() {
+// 	if gs.draggingSoldier == nil {
+// 		return
+// 	}
+// 	gs.draggingSoldier.Pos = rl.GetMousePosition()
+// 	gs.draggingSoldier.Draw()
+// }
 
 func (gs *gameState) useConsumable() {
 	switch gs.selectedConsumable {
@@ -499,9 +529,11 @@ func (gs *gameState) useConsumable() {
 }
 
 func (gs *gameState) useFlare() {
-	if rl.IsMouseButtonPressed(rl.MouseLeftButton) && gs.draggingSoldier == nil && gs.itemStorage.flareCount > 0 {
+	if rl.IsMouseButtonPressed(rl.MouseLeftButton) &&
+		// gs.draggingSoldier == nil &&
+		gs.itemStorage.flareCount > 0 {
 		mousePos := rl.GetMousePosition()
-		if !rl.CheckCollisionPointRec(mousePos, arenaBoundaries) {
+		if !rl.CheckCollisionPointRec(mousePos, gs.boundaries.arenaBoundaries) {
 			return
 		}
 		newFlare := flare.FromPos(mousePos)
@@ -533,9 +565,11 @@ func (gs *gameState) renderFlares() {
 }
 
 func (gs *gameState) useGrenade() {
-	if rl.IsMouseButtonPressed(rl.MouseLeftButton) && gs.draggingSoldier == nil && gs.itemStorage.grenadeCount > 0 {
+	if rl.IsMouseButtonPressed(rl.MouseLeftButton) &&
+		// gs.draggingSoldier == nil &&
+		gs.itemStorage.grenadeCount > 0 {
 		mousePos := rl.GetMousePosition()
-		if !rl.CheckCollisionPointRec(mousePos, arenaBoundaries) {
+		if !rl.CheckCollisionPointRec(mousePos, gs.boundaries.arenaBoundaries) {
 			return
 		}
 		newGrenade := grenade.FromPos(mousePos)
@@ -567,7 +601,7 @@ func (gs *gameState) processProjectiles() {
 	activeProjectiles := gs.projectiles[:0]
 	for _, p := range gs.projectiles {
 		p.Move()
-		if !rl.CheckCollisionPointRec(p.Pos, arenaBoundaries) {
+		if !rl.CheckCollisionPointRec(p.Pos, gs.boundaries.arenaBoundaries) {
 			continue
 		}
 		gs.quadtree.Insert(p.ID, p.Boundaries(), p)
@@ -608,6 +642,7 @@ func (gs *gameState) spawnEnemies() {
 }
 
 func (gs *gameState) findPositionForEnemy() rl.Vector2 {
+	arenaBoundaries := gs.boundaries.arenaBoundaries
 	for {
 
 		// should be spawned in arena boundaries
@@ -732,9 +767,7 @@ func (gs *gameState) renderSoldiers() {
 func (gs *gameState) renderGameOver() {
 	if rl.IsKeyPressed(rl.KeyEnter) {
 		gs.gameScreen = gameScreenGame
-		gs.soldiers = []*soldier.Soldier{
-			soldier.FromPos(rl.Vector2{X: arenaWidth / 2, Y: arenaHeight / 2}, gs.assets.soldier, gs.assets.soldierMelee),
-		}
+		gs.soldiers = nil
 		gs.enemies = nil
 		gs.flares = nil
 		gs.grenades = nil
@@ -746,6 +779,7 @@ func (gs *gameState) renderGameOver() {
 		"Press enter to restart",
 	)
 
+	arenaBoundaries := gs.boundaries.arenaBoundaries
 	rlutils.DrawTextAtCenterOfRectangle("Game Over", arenaBoundaries, centerLabelFontSize, centerLabelColor)
 }
 
@@ -777,7 +811,8 @@ func findNearest[T positionable](items []T, pos rl.Vector2) T {
 	return nearest
 }
 
-func drawDescription(description string) {
+func (gs *gameState) drawDescription(description string) {
+	arenaBoundaries := gs.boundaries.arenaBoundaries
 	// description should be displayed in the center of the arena in a rectangle lines
 	// with white color
 	descriptionBoundaries := rl.Rectangle{
