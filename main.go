@@ -65,7 +65,7 @@ var (
 )
 
 func main() {
-	boltCli, err := bbolt.Open("game.db", os.ModePerm, nil)
+	boltCli, err := bbolt.Open("light-in-night.db", os.ModePerm, nil)
 	if err != nil {
 		panic(err)
 	}
@@ -699,6 +699,7 @@ func (gs *gameState) renderHowToPlayScreen() {
 		"The game ends when all soldiers are defeated.",
 		"Pause the game anytime with the spacebar.",
 		"The less soldiers you choose, the more money/score you earn.",
+		"Don't delete light-in-night.db file, it contains your highscore.",
 	}
 
 	x := int32(gs.boundaries.screenBoundaries.Width / 2)
@@ -1230,12 +1231,30 @@ func (gs *gameState) renderGameOver() {
 	gameOverY := y
 	rl.DrawText(gameOver, gameOverX, gameOverY, fontSize, rl.White)
 
-	score := "Score: " + strconv.Itoa(gs.score)
-	scoreWidth := rl.MeasureText(score, fontSize)
-	scoreX := x - scoreWidth/2
-	y += spacing
-	scoreY := y
-	rl.DrawText(score, scoreX, scoreY, fontSize, rl.White)
+	scoreMultiplier := gs.scoreMultiplierForAliveSoldiers()
+
+	if scoreMultiplier > 1 {
+		victoryBonus := fmt.Sprintf("Alive soldiers bonus: x%d", scoreMultiplier)
+		victoryBonusWidth := rl.MeasureText(victoryBonus, fontSize)
+		victoryBonusX := x - victoryBonusWidth/2
+		y += spacing
+		victoryBonusY := y
+		rl.DrawText(victoryBonus, victoryBonusX, victoryBonusY, fontSize, rl.White)
+
+		score := fmt.Sprintf("Score: %d x %d = %d", gs.score, scoreMultiplier, gs.score*scoreMultiplier)
+		scoreWidth := rl.MeasureText(score, fontSize)
+		scoreX := x - scoreWidth/2
+		y += spacing
+		scoreY := y
+		rl.DrawText(score, scoreX, scoreY, fontSize, rl.White)
+	} else {
+		score := fmt.Sprintf("Score: %d", gs.score)
+		scoreWidth := rl.MeasureText(score, fontSize)
+		scoreX := x - scoreWidth/2
+		y += spacing
+		scoreY := y
+		rl.DrawText(score, scoreX, scoreY, fontSize, rl.White)
+	}
 
 	time := "Time: " + gameTimeToString(gs.gameTime)
 	timeWidth := rl.MeasureText(time, fontSize)
@@ -1330,16 +1349,21 @@ func (gs *gameState) renderGameOver() {
 	rl.DrawText(backToMainMenuItemNoScore, backToMainMenuItemNoScoreX, backToMainMenuItemNoScoreY, fontSize, color)
 }
 
+func (gs *gameState) scoreMultiplierForAliveSoldiers() int {
+	return int(math.Pow(2, float64(len(gs.soldiers))))
+}
+
 func (gs *gameState) saveScore() {
 	if len(gs.nameInput) == 0 {
 		return
 	}
 
-	rl.TraceLog(rl.LogInfo, "Saving score for %s: %d", gs.nameInput, gs.score)
+	score := gs.score * gs.scoreMultiplierForAliveSoldiers()
+	rl.TraceLog(rl.LogInfo, "Saving score for %s: %d", gs.nameInput, score)
 
 	err := gs.db.AddHighscore(db.Highscore{
 		Name:    gs.nameInput,
-		Score:   gs.score,
+		Score:   score,
 		Time:    gs.gameTime,
 		Victory: gs.victory,
 	})
