@@ -7,8 +7,9 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/pechorka/illuminate-game-jam/internal/consumables/flare"
+	"github.com/pechorka/illuminate-game-jam/internal/consumables/grenade"
 	"github.com/pechorka/illuminate-game-jam/internal/enemy"
-	"github.com/pechorka/illuminate-game-jam/internal/flare"
 	"github.com/pechorka/illuminate-game-jam/internal/projectile"
 	"github.com/pechorka/illuminate-game-jam/internal/soldier"
 	"github.com/pechorka/illuminate-game-jam/pkg/data_structures/quadtree"
@@ -84,10 +85,8 @@ var (
 )
 
 var (
-	flareCenterColor  = rl.Color{R: 255, G: 0, B: 0, A: 127}
-	flareEdgeColor    = rl.Color{R: 255, G: 127, B: 0, A: 127}
-	flareRadius       = float32(50)
-	initialFlareCount = 10
+	initialFlareCount   = 50
+	initialGrenadeCount = 5
 )
 
 var (
@@ -107,10 +106,14 @@ func main() {
 		prevQuadtree: quadtree.NewQuadtree(arenaBoundaries, quadtreeCapacity),
 		quadtree:     quadtree.NewQuadtree(arenaBoundaries, quadtreeCapacity),
 
+		itemStorage: &itemStorage{
+			flareCount:   initialFlareCount,
+			grenadeCount: initialGrenadeCount,
+		},
+		selectedConsumable: flares,
+
 		gameScreen: gameScreenGame,
 		paused:     true,
-
-		flareCount: initialFlareCount,
 	}
 
 	gs.soldiers = append(gs.soldiers, soldier.FromPos(rl.Vector2{X: arenaWidth / 2, Y: arenaHeight / 2}, gs.assets.soldier, gs.assets.soldierMelee))
@@ -158,9 +161,13 @@ type gameState struct {
 	prevQuadtree *quadtree.Quadtree
 	quadtree     *quadtree.Quadtree
 	flares       []*flare.Flare
+	grenades     []*grenade.Grenade
 	soldiers     []*soldier.Soldier
 	enemies      []*enemy.Enemy
 	projectiles  []*projectile.Projectile
+
+	itemStorage        *itemStorage
+	selectedConsumable consumable
 
 	gameScreen      gameScreen
 	paused          bool
@@ -168,11 +175,21 @@ type gameState struct {
 	// TODO: add money
 	score int
 
-	flareCount int
-
 	gameTime float32
 
 	draggingSoldier *soldier.Soldier
+}
+
+type consumable int
+
+const (
+	flares consumable = iota + 1
+	grenades
+)
+
+type itemStorage struct {
+	flareCount   int
+	grenadeCount int
 }
 
 func (gs *gameState) renderFrame() {
@@ -201,17 +218,18 @@ func (gs *gameState) renderGame() {
 	if !gs.paused {
 		gs.gameTime += rl.GetFrameTime()
 
-		gs.addFlare()
-		gs.dimFlares()
+		gs.useConsumable()
+		gs.processFlares()
+		gs.processGrenades()
 
-		gs.moveProjectiles()
+		gs.processProjectiles()
 
 		gs.cleanupDeadEnemies()
 		gs.spawnEnemies()
-		flaredEnemies := gs.moveEnemies()
+		flaredEnemies := gs.processEnemies()
 
 		gs.cleanupDeadSoldiers()
-		gs.moveSoldiers(flaredEnemies)
+		gs.processSoldiers(flaredEnemies)
 	}
 
 	gs.renderHeader()
@@ -221,6 +239,7 @@ func (gs *gameState) renderGame() {
 	gs.placeDraggedSoldier()
 	gs.renderDraggingSoldier()
 	gs.renderFlares()
+	gs.renderGrenades()
 	gs.renderProjectiles()
 	gs.renderEnemies()
 	gs.renderSoldiers()
@@ -310,7 +329,7 @@ func (gs *gameState) renderFooter() {
 
 			if rl.IsMouseButtonPressed(rl.MouseLeftButton) {
 				if i == 1 { // flare
-					gs.flareCount += 10
+					gs.itemStorage.flareCount += 10
 				}
 			}
 		}
@@ -389,23 +408,38 @@ func (gs *gameState) renderItemSelector() {
 		// TODO: add constructor for soldier
 		count       int
 		description string
+		consumable  consumable
 	}
 
-	mockItems := []*itemStorageItem{
-		{name: "Flare", icon: gs.assets.soldier, count: gs.flareCount, description: "Reveals enemies"},
-		{name: "Grenade", icon: gs.assets.soldier, count: 0, description: "Deals damage to enemies"},
+	items := []*itemStorageItem{
+		{name: "Flare", icon: gs.assets.soldier, count: gs.itemStorage.flareCount, description: "Reveals enemies", consumable: flares},
+		{name: "Grenade", icon: gs.assets.soldier, count: gs.itemStorage.grenadeCount, description: "Deals damage", consumable: grenades},
 	}
 
 	itemWidth := soldierStorageBoundaries.Width - 20 // 10px margin on each side
 	itemHeight := float32(100)
-	for i, item := range mockItems {
+	for i, item := range items {
+
 		itemBoundaries := rl.Rectangle{
 			X:      itemStorageBoundaries.X + 10,
 			Y:      itemStorageBoundaries.Y + float32(i)*(itemHeight+10),
 			Width:  itemWidth,
 			Height: itemHeight,
 		}
-		rl.DrawRectangleLinesEx(itemBoundaries, 2, rl.White)
+		mousePos := rl.GetMousePosition()
+		if rl.CheckCollisionPointRec(mousePos, itemBoundaries) {
+			drawDescription(item.description)
+			if rl.IsMouseButtonPressed(rl.MouseLeftButton) {
+				gs.selectedConsumable = item.consumable
+			}
+		}
+
+		color := rl.White
+		if gs.selectedConsumable == item.consumable {
+			color = rl.Green
+		}
+
+		rl.DrawRectangleLinesEx(itemBoundaries, 2, color)
 		// draw count in top left corner and icon in center
 		countText := strconv.Itoa(item.count)
 		countTextPos := rl.Vector2{
@@ -427,12 +461,6 @@ func (gs *gameState) renderItemSelector() {
 		}
 		// TODO: adjust font size based on name length
 		rl.DrawText(item.name, int32(namePos.X), int32(namePos.Y), 20, rl.White)
-
-		// display description when hovered
-		mousePos := rl.GetMousePosition()
-		if rl.CheckCollisionPointRec(mousePos, itemBoundaries) {
-			drawDescription(item.description)
-		}
 	}
 }
 
@@ -461,31 +489,28 @@ func (gs *gameState) renderDraggingSoldier() {
 	gs.draggingSoldier.Draw()
 }
 
-func (gs *gameState) addFlare() {
-	if rl.IsMouseButtonPressed(rl.MouseLeftButton) && gs.draggingSoldier == nil && gs.flareCount > 0 {
+func (gs *gameState) useConsumable() {
+	switch gs.selectedConsumable {
+	case flares:
+		gs.useFlare()
+	case grenades:
+		gs.useGrenade()
+	}
+}
+
+func (gs *gameState) useFlare() {
+	if rl.IsMouseButtonPressed(rl.MouseLeftButton) && gs.draggingSoldier == nil && gs.itemStorage.flareCount > 0 {
 		mousePos := rl.GetMousePosition()
 		if !rl.CheckCollisionPointRec(mousePos, arenaBoundaries) {
 			return
 		}
-		newFlare := flare.FromPos(mousePos, flareRadius, flareCenterColor, flareEdgeColor)
+		newFlare := flare.FromPos(mousePos)
 		gs.flares = append(gs.flares, newFlare)
-		gs.flareCount--
+		gs.itemStorage.flareCount--
 	}
 }
 
-func (gs *gameState) renderFlares() {
-	for _, f := range gs.flares {
-		f.Draw()
-	}
-	// render flare count at top right corner
-	flareCountText := "Flares: " + strconv.Itoa(gs.flareCount)
-	flareCountTextWidth := rl.MeasureText(flareCountText, 20)
-	x := int32(arenaBoundaries.X + arenaBoundaries.Width - float32(flareCountTextWidth) - 10)
-	y := int32(headerBoundaries.Height + 10)
-	rl.DrawText("Flares: "+strconv.Itoa(gs.flareCount), x, y, 20, rl.White)
-}
-
-func (gs *gameState) dimFlares() {
+func (gs *gameState) processFlares() {
 	wentOutCount := 0
 	for _, f := range gs.flares {
 		f.Dim()
@@ -501,7 +526,44 @@ func (gs *gameState) dimFlares() {
 	}
 }
 
-func (gs *gameState) moveProjectiles() {
+func (gs *gameState) renderFlares() {
+	for _, f := range gs.flares {
+		f.Draw()
+	}
+}
+
+func (gs *gameState) useGrenade() {
+	if rl.IsMouseButtonPressed(rl.MouseLeftButton) && gs.draggingSoldier == nil && gs.itemStorage.grenadeCount > 0 {
+		mousePos := rl.GetMousePosition()
+		if !rl.CheckCollisionPointRec(mousePos, arenaBoundaries) {
+			return
+		}
+		newGrenade := grenade.FromPos(mousePos)
+		gs.grenades = append(gs.grenades, newGrenade)
+		gs.itemStorage.grenadeCount--
+	}
+}
+
+func (gs *gameState) processGrenades() {
+	activeGrenades := gs.grenades[:0]
+	for _, g := range gs.grenades {
+		g.ProgressTime(rl.GetFrameTime())
+		if !g.Active() {
+			continue
+		}
+		activeGrenades = append(activeGrenades, g)
+		gs.quadtree.Insert(g.ID, g.Boundaries(), g)
+	}
+	gs.grenades = activeGrenades
+}
+
+func (gs *gameState) renderGrenades() {
+	for _, g := range gs.grenades {
+		g.Draw()
+	}
+}
+
+func (gs *gameState) processProjectiles() {
 	activeProjectiles := gs.projectiles[:0]
 	for _, p := range gs.projectiles {
 		p.Move()
@@ -523,7 +585,7 @@ func (gs *gameState) renderProjectiles() {
 func (gs *gameState) cleanupDeadEnemies() {
 	aliveEnemies := gs.enemies[:0]
 	for _, e := range gs.enemies {
-		if e.Health == 0 {
+		if e.Health <= 0 {
 			gs.score += e.Reward
 			continue
 		}
@@ -565,7 +627,7 @@ func (gs *gameState) findPositionForEnemy() rl.Vector2 {
 	}
 }
 
-func (gs *gameState) moveEnemies() []*enemy.Enemy {
+func (gs *gameState) processEnemies() []*enemy.Enemy {
 	flaredEnemies := make([]*enemy.Enemy, 0, len(gs.enemies)/3)
 	for _, e := range gs.enemies {
 		nearestSoldier := findNearest(gs.soldiers, e.Pos)
@@ -594,6 +656,8 @@ func (gs *gameState) moveEnemies() []*enemy.Enemy {
 				newPosition = e.MoveAway(val.Pos)
 			case *projectile.Projectile:
 				e.Health -= val.Damage
+			case *grenade.Grenade:
+				e.Health -= val.Damage
 			}
 		}
 
@@ -620,7 +684,7 @@ func (gs *gameState) cleanupDeadSoldiers() {
 	gs.soldiers = aliveSoldiers
 }
 
-func (gs *gameState) moveSoldiers(flaredEnemies []*enemy.Enemy) {
+func (gs *gameState) processSoldiers(flaredEnemies []*enemy.Enemy) {
 	for _, s := range gs.soldiers {
 		s.ProgressTime(rl.GetFrameTime())
 
@@ -635,6 +699,8 @@ func (gs *gameState) moveSoldiers(flaredEnemies []*enemy.Enemy) {
 			case *enemy.Enemy:
 				s.State = soldier.Melee
 				val.Health -= s.Damage
+			case *grenade.Grenade:
+				s.Health -= val.Damage
 			}
 		}
 
@@ -666,9 +732,12 @@ func (gs *gameState) renderSoldiers() {
 func (gs *gameState) renderGameOver() {
 	if rl.IsKeyPressed(rl.KeyEnter) {
 		gs.gameScreen = gameScreenGame
-		gs.soldiers = nil
+		gs.soldiers = []*soldier.Soldier{
+			soldier.FromPos(rl.Vector2{X: arenaWidth / 2, Y: arenaHeight / 2}, gs.assets.soldier, gs.assets.soldierMelee),
+		}
 		gs.enemies = nil
 		gs.flares = nil
+		gs.grenades = nil
 		gs.projectiles = nil
 		return
 	}

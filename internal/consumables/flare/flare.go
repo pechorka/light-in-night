@@ -11,30 +11,34 @@ const (
 	WentOutThreshold = 10 // percent
 )
 
-type Flare struct {
-	ID                     int
-	Pos                    rl.Vector2
-	Radius                 float32
-	CenterColor, EdgeColor rl.Color
+var (
+	centerColor           = rl.Color{R: 255, G: 0, B: 0, A: 127}
+	edgeColor             = rl.Color{R: 255, G: 127, B: 0, A: 127}
+	initialRadius float32 = 50
+)
 
-	originalRadius float32
+var (
+	wentOutRadius float32 = initialRadius * WentOutThreshold / 100
+)
+
+type Flare struct {
+	ID     int
+	Pos    rl.Vector2
+	Radius float32
 }
 
-func FromPos(pos rl.Vector2, radius float32, centerColor, edgeColor rl.Color) *Flare {
+func FromPos(pos rl.Vector2) *Flare {
 	return &Flare{
-		ID:             rand.Int(),
-		Pos:            pos,
-		Radius:         radius,
-		originalRadius: radius,
-		CenterColor:    centerColor,
-		EdgeColor:      edgeColor,
+		ID:     rand.Int(),
+		Pos:    pos,
+		Radius: initialRadius,
 	}
 }
 
 func (f *Flare) Draw() {
 	rl.DrawCircleGradient(
 		int32(f.Pos.X), int32(f.Pos.Y), f.Radius,
-		f.CenterColor, f.EdgeColor,
+		centerColor, edgeColor,
 	)
 }
 
@@ -43,7 +47,7 @@ func (f *Flare) Dim() {
 }
 
 func (f *Flare) WentOut() bool {
-	return f.Radius < f.originalRadius*WentOutThreshold/100
+	return f.Radius < wentOutRadius
 }
 
 func (f *Flare) Boundaries() rl.Rectangle {
