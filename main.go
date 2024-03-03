@@ -73,12 +73,13 @@ func main() {
 		assets: &gameAssets{
 			soldier: loadTextureFromImage("assets/soldier.png"),
 			enemy: &enemyAssets{
-				// basic: loadTextureFromImage("assets/enemy/basic.png"),
-				// fast:  loadTextureFromImage("assets/enemy/fast.png"),
-				// tank:  loadTextureFromImage("assets/enemy/tank.png"),
-				basic: loadTextureFromImage("assets/enemy.png"),
-				fast:  loadTextureFromImage("assets/enemy.png"),
-				tank:  loadTextureFromImage("assets/enemy.png"),
+				basic: loadTextureFromImage("assets/enemy/basic.png"),
+				fast:  loadTextureFromImage("assets/enemy/fast.png"),
+				tank:  loadTextureFromImage("assets/enemy/tank.png"),
+			},
+			consumables: &consumableAssets{
+				flare:   loadTextureFromImage("assets/consumables/flare.png"),
+				grenade: loadTextureFromImage("assets/consumables/grenade.png"),
 			},
 		},
 		prevQuadtree: quadtree.NewQuadtree(gb.arenaBoundaries, quadtreeCapacity),
@@ -125,13 +126,19 @@ func loadTextureFromImage(imgPath string) rl.Texture2D {
 type gameAssets struct {
 	soldier rl.Texture2D
 
-	enemy *enemyAssets
+	enemy       *enemyAssets
+	consumables *consumableAssets
 }
 
 type enemyAssets struct {
 	basic rl.Texture2D
 	fast  rl.Texture2D
 	tank  rl.Texture2D
+}
+
+type consumableAssets struct {
+	flare   rl.Texture2D
+	grenade rl.Texture2D
 }
 
 type gameScreen int
@@ -364,6 +371,9 @@ func (gs *gameState) renderSetupGameScreen() {
 				gs.placeSoldiersOnRandomPositions(soldierCount)
 			}
 		}
+		if i+1 == soldierCount {
+			color = rl.Green
+		}
 
 		rl.DrawRectangleLinesEx(optionBoundaries, 2, color)
 		rl.DrawText(option, optionX, optionY, fontSize, color)
@@ -519,26 +529,23 @@ func (gs *gameState) renderHeader() {
 	}
 }
 
+type shopItem struct {
+	price       int
+	count       int
+	name        string
+	description string
+	icon        rl.Texture2D
+	ctype       consumable
+}
+
 func (gs *gameState) renderFooter() {
 	footerBoundaries := gs.boundaries.footerBoundaries
 	rl.DrawRectangleRec(footerBoundaries, rl.Gray)
-	// footer should have shop items in squares
-	// each square should have price and icon
-	// when hovered - show description
-	type shopItem struct {
-		price       int
-		count       int
-		name        string
-		description string
-		icon        rl.Texture2D
-		ctype       consumable
-	}
-
 	// TODO: shop can have items to increase difficulty, but with higher rewards
 	// for example: princess that needs to be protected for some time, but gives a lot of money
 	mockItems := []shopItem{
-		{price: 10, count: 10, name: "Flare", description: "Reveals enemies", icon: gs.assets.soldier, ctype: flares},
-		{price: 20, count: 1, name: "Grenade", description: "Deals damage", icon: gs.assets.soldier, ctype: grenades},
+		{price: 10, count: 10, name: "Flare", description: "Reveals enemies", icon: gs.assets.consumables.flare, ctype: flares},
+		{price: 20, count: 1, name: "Grenade", description: "Deals damage", icon: gs.assets.consumables.grenade, ctype: grenades},
 	}
 	itemWidth := float32(100)
 	itemHeight := footerBoundaries.Height - 20 // 10px margin on each side
@@ -550,21 +557,6 @@ func (gs *gameState) renderFooter() {
 			Height: itemHeight,
 		}
 		rl.DrawRectangleLinesEx(itemBoundaries, 2, rl.White)
-		// draw price in top left corner
-		priceText := strconv.Itoa(item.price) + "$"
-		priceTextPos := rl.Vector2{
-			X: itemBoundaries.X + 10,
-			Y: itemBoundaries.Y + 10,
-		}
-		rl.DrawText(priceText, int32(priceTextPos.X), int32(priceTextPos.Y), 20, rl.White)
-
-		// draw count in top right corner
-		countText := strconv.Itoa(item.count)
-		countTextPos := rl.Vector2{
-			X: itemBoundaries.X + itemBoundaries.Width - 10 - float32(rl.MeasureText(countText, 20)),
-			Y: itemBoundaries.Y + 10,
-		}
-		rl.DrawText(countText, int32(countTextPos.X), int32(countTextPos.Y), 20, rl.White)
 
 		iconPos := rl.Vector2{
 			X: itemBoundaries.X + itemBoundaries.Width/2 - float32(item.icon.Width/2),
@@ -572,17 +564,10 @@ func (gs *gameState) renderFooter() {
 		}
 		rl.DrawTextureV(item.icon, iconPos, rl.White)
 
-		// draw name in botton left corner of the item
-		namePos := rl.Vector2{
-			X: itemBoundaries.X + 5,
-			Y: itemBoundaries.Y + itemBoundaries.Height - 25,
-		}
-		rl.DrawText(item.name, int32(namePos.X), int32(namePos.Y), 20, rl.White)
-
 		// display description when hovered
 		if rl.CheckCollisionPointRec(rl.GetMousePosition(), itemBoundaries) {
 			// description should be displayed above the item with border
-			gs.drawDescription(item.description)
+			gs.drawShopItemDescription(item)
 
 			if rl.IsMouseButtonPressed(rl.MouseLeftButton) && gs.money >= item.price {
 				gs.money -= item.price
@@ -602,7 +587,7 @@ func (gs *gameState) renderHowToPlayScreen() {
 		"How to Play:",
 		"1. Start a new game from the main menu and select the number of soldiers.",
 		"2. Use the left mouse button to deploy flares and grenades.",
-		"3. Flares reveal enemies. Grenades damage them.",
+		"3. Flares reveal and repel enemies. Grenades damage them.",
 		"4. Use money earned from defeating enemies to buy more consumables.",
 		"5. The game ends when all soldiers are defeated.",
 		"6. Pause the game anytime with the spacebar.",
@@ -1136,7 +1121,7 @@ func findNearest[T positionable](items []T, pos rl.Vector2) T {
 	return nearest
 }
 
-func (gs *gameState) drawDescription(description string) {
+func (gs *gameState) drawShopItemDescription(item shopItem) {
 	arenaBoundaries := gs.boundaries.arenaBoundaries
 	// description should be displayed in the center of the arena in a rectangle lines
 	// with white color
@@ -1149,7 +1134,21 @@ func (gs *gameState) drawDescription(description string) {
 
 	rl.DrawRectangleLinesEx(descriptionBoundaries, 2, rl.White)
 
-	rlutils.DrawTextAtCenterOfRectangle(description, descriptionBoundaries, 20, rl.White)
+	x := int32(descriptionBoundaries.X + 10)
+	y := int32(descriptionBoundaries.Y + 10)
+	spacing := int32(30)
+
+	name := "Name: " + item.name
+	rl.DrawText(name, x, y, 20, rl.White)
+	y += spacing
+	price := "Price: " + strconv.Itoa(item.price) + "$"
+	rl.DrawText(price, x, y, 20, rl.White)
+	y += spacing
+	count := "Count: " + strconv.Itoa(item.count)
+	rl.DrawText(count, x, y, 20, rl.White)
+	y += spacing
+	description := "Description: " + item.description
+	rl.DrawText(description, x, y, 20, rl.White)
 }
 
 func reward(base int) int {
