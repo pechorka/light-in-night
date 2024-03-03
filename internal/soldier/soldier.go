@@ -120,18 +120,18 @@ func (s *Soldier) Draw() {
 	}
 	rl.DrawRectangleRec(healthbar, rl.Green)
 	// draw reload bar above health bar
-	scaledReloadProgress := scaleToWidth(s.ShootAgo, s.ShootingRate, reloadBarWidth)
-	reloadBar := rl.Rectangle{
-		X:      s.Pos.X,
-		Y:      s.Pos.Y - 20,
-		Width:  scaledReloadProgress,
-		Height: reloadBarHeight,
-	}
-	reloadColor := rl.Red
-	if s.ShootAgo >= s.ShootingRate {
-		reloadColor = rl.SkyBlue
-	}
-	rl.DrawRectangleRec(reloadBar, reloadColor)
+	// scaledReloadProgress := scaleToWidth(s.ShootAgo, s.ShootingRate, reloadBarWidth)
+	// reloadBar := rl.Rectangle{
+	// 	X:      s.Pos.X,
+	// 	Y:      s.Pos.Y - 20,
+	// 	Width:  scaledReloadProgress,
+	// 	Height: reloadBarHeight,
+	// }
+	// reloadColor := rl.Red
+	// if s.ShootAgo >= s.ShootingRate {
+	// 	reloadColor = rl.SkyBlue
+	// }
+	// rl.DrawRectangleRec(reloadBar, reloadColor)
 
 	// draw circle with radius of shooting range
 	rl.DrawCircleLines(int32(s.Pos.X), int32(s.Pos.Y), s.ShootingRange, rl.White)

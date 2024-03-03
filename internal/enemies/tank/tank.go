@@ -9,9 +9,14 @@ import (
 )
 
 const (
-	initialSpeed  = 0.2
-	initialHealth = 40
-	initialDamage = 20
+	speedFrom = 0.4
+	speedTo   = 0.8
+
+	healthFrom = 40.0
+	healthTo   = 80.0
+
+	damageFrom = 20.0
+	damageTo   = 30.0
 )
 
 type Enemy struct {
@@ -29,6 +34,9 @@ type Enemy struct {
 }
 
 func FromPos(pos rl.Vector2, texture rl.Texture2D) *Enemy {
+	initialSpeed := rlutils.RandomFloat(speedFrom, speedTo)
+	initialHealth := rlutils.RandomFloat(healthFrom, healthTo)
+	initialDamage := rlutils.RandomFloat(damageFrom, damageTo)
 	return &Enemy{
 		ID:  rand.Int(),
 		Pos: pos,
