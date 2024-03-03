@@ -86,6 +86,7 @@ func main() {
 		assets: &gameAssets{
 			// titleMusic: loadMusicStream("assets/sounds/music/title.mp3"),
 			soldier: loadTextureFromImage("assets/soldier.png"),
+			levelup: loadTextureFromImage("assets/levelup.png"),
 			enemy: &enemyAssets{
 				basic: loadTextureFromImage("assets/enemy/basic.png"),
 				fast:  loadTextureFromImage("assets/enemy/fast.png"),
@@ -155,6 +156,7 @@ func loadMusicStream(musicPath string) rl.Music {
 
 type gameAssets struct {
 	soldier    rl.Texture2D
+	levelup    rl.Texture2D
 	titleMusic rl.Music
 
 	enemy       *enemyAssets
@@ -486,7 +488,7 @@ func (gs *gameState) placeSoldiersOnRandomPositions(soldierCount int) {
 			X: rlutils.RandomFloat(ab.X+100, ab.Width+ab.X-100),
 			Y: rlutils.RandomFloat(ab.Y+100, ab.Height+ab.Y-100),
 		}
-		newSoldier := soldier.FromPos(pos, gs.assets.soldier)
+		newSoldier := soldier.FromPos(pos, gs.assets.soldier, gs.assets.levelup)
 
 		collisions := quadtree.Query(newSoldier.Boundaries())
 		if len(collisions) > 0 {

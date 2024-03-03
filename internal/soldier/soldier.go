@@ -48,14 +48,16 @@ type Soldier struct {
 	ShootingRate  float32
 
 	Walking rl.Texture2D
+	Levelup rl.Texture2D
 
 	ShootAgo float32
 
-	exp              int
-	levelUpThreshold int
+	exp                  int
+	levelUpThreshold     int
+	levelupAnimationTime float32
 }
 
-func FromPos(pos rl.Vector2, walking rl.Texture2D) *Soldier {
+func FromPos(pos rl.Vector2, walking, levelup rl.Texture2D) *Soldier {
 	return &Soldier{
 		ID:    rand.Int(),
 		Pos:   pos,
@@ -69,6 +71,7 @@ func FromPos(pos rl.Vector2, walking rl.Texture2D) *Soldier {
 		ShootingRate:  initialShootingRate,
 
 		Walking: walking,
+		Levelup: levelup,
 
 		ShootAgo:         initialShootingRate,
 		levelUpThreshold: initialLevelUpThreshold,
@@ -89,6 +92,7 @@ func (s *Soldier) levelUp() {
 	s.Damage += s.Damage * statUp / 100
 	s.ShootingRange += s.ShootingRange * statUp / 100
 	s.ShootingRate -= s.ShootingRate * statUp / 100
+	s.levelupAnimationTime = 1
 }
 
 func (s *Soldier) Draw() {
@@ -114,19 +118,11 @@ func (s *Soldier) Draw() {
 		Height: healthbarHeight - 4,
 	}
 	rl.DrawRectangleRec(healthbar, rl.Green)
-	// draw reload bar above health bar
-	// scaledReloadProgress := scaleToWidth(s.ShootAgo, s.ShootingRate, reloadBarWidth)
-	// reloadBar := rl.Rectangle{
-	// 	X:      s.Pos.X,
-	// 	Y:      s.Pos.Y - 20,
-	// 	Width:  scaledReloadProgress,
-	// 	Height: reloadBarHeight,
-	// }
-	// reloadColor := rl.Red
-	// if s.ShootAgo >= s.ShootingRate {
-	// 	reloadColor = rl.SkyBlue
-	// }
-	// rl.DrawRectangleRec(reloadBar, reloadColor)
+
+	if s.levelupAnimationTime > 0 {
+		levelUpPosition := rl.Vector2{X: s.Pos.X - 20, Y: s.Pos.Y - 20}
+		rl.DrawTexture(s.Levelup, int32(levelUpPosition.X), int32(levelUpPosition.Y), rl.White)
+	}
 
 	// draw circle with radius of shooting range
 	rl.DrawCircleLines(int32(s.Pos.X), int32(s.Pos.Y), s.ShootingRange, rl.White)
@@ -165,6 +161,9 @@ func (s *Soldier) Shoot() {
 func (s *Soldier) ProgressTime(dt float32) {
 	if s.ShootAgo < s.ShootingRate {
 		s.ShootAgo += dt
+	}
+	if s.levelupAnimationTime > 0 {
+		s.levelupAnimationTime -= dt
 	}
 }
 
