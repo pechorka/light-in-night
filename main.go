@@ -1019,6 +1019,10 @@ func (gs *gameState) spawnEnemy() enemy {
 			Y: float32(rand.Intn(int(arenaBoundaries.Height))) + arenaBoundaries.Y,
 		}
 
+		if gs.anySoldierCanShoot(pos) {
+			continue
+		}
+
 		newEnemy := newEnemy(pos, gs.assets)
 
 		collissions := gs.prevQuadtree.Query(newEnemy.Boundaries())
@@ -1026,6 +1030,15 @@ func (gs *gameState) spawnEnemy() enemy {
 			return newEnemy
 		}
 	}
+}
+
+func (gs *gameState) anySoldierCanShoot(pos rl.Vector2) bool {
+	for _, s := range gs.soldiers {
+		if s.WithinShootingRange(pos) {
+			return true
+		}
+	}
+	return false
 }
 
 func (gs *gameState) processEnemies() []enemy {
