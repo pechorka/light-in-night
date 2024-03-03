@@ -90,9 +90,6 @@ func (e *Enemy) UpdatePosition(pos rl.Vector2) {
 
 func (e *Enemy) Draw() {
 	rl.DrawTexture(e.Texture, int32(e.Pos.X), int32(e.Pos.Y), rl.White)
-
-	name := "fast"
-	rl.DrawText(name, int32(e.Pos.X), int32(e.Pos.Y-10), 10, rl.Red)
 }
 
 func (e *Enemy) DealDamage() float32 {
