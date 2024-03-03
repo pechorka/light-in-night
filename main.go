@@ -9,7 +9,7 @@ import (
 
 	"github.com/pechorka/illuminate-game-jam/internal/consumables/flare"
 	"github.com/pechorka/illuminate-game-jam/internal/consumables/grenade"
-	"github.com/pechorka/illuminate-game-jam/internal/enemy"
+	"github.com/pechorka/illuminate-game-jam/internal/enemies/basic"
 	"github.com/pechorka/illuminate-game-jam/internal/projectile"
 	"github.com/pechorka/illuminate-game-jam/internal/soldier"
 	"github.com/pechorka/illuminate-game-jam/pkg/data_structures/quadtree"
@@ -61,9 +61,8 @@ func main() {
 	gs := &gameState{
 		boundaries: gb,
 		assets: &gameAssets{
-			soldier:      loadTextureFromImage("assets/soldier.png"),
-			soldierMelee: loadTextureFromImage("assets/soldier_melee.png"),
-			enemy:        loadTextureFromImage("assets/enemy.png"),
+			soldier:    loadTextureFromImage("assets/soldier.png"),
+			basicEnemy: loadTextureFromImage("assets/enemy.png"),
 		},
 		prevQuadtree: quadtree.NewQuadtree(gb.arenaBoundaries, quadtreeCapacity),
 		quadtree:     quadtree.NewQuadtree(gb.arenaBoundaries, quadtreeCapacity),
@@ -81,7 +80,7 @@ func main() {
 	gs.soldiers = append(gs.soldiers, soldier.FromPos(rl.Vector2{
 		X: gb.arenaBoundaries.Width / 2,
 		Y: gb.arenaBoundaries.Height / 2,
-	}, gs.assets.soldier, gs.assets.soldierMelee))
+	}, gs.assets.soldier))
 
 	for !rl.WindowShouldClose() {
 		rl.BeginDrawing()
@@ -106,10 +105,9 @@ func loadTextureFromImage(imgPath string) rl.Texture2D {
 }
 
 type gameAssets struct {
-	soldier      rl.Texture2D
-	soldierMelee rl.Texture2D
+	soldier rl.Texture2D
 
-	enemy rl.Texture2D
+	basicEnemy rl.Texture2D
 }
 
 type gameScreen int
@@ -178,6 +176,20 @@ func (gb *gameBoundaries) updateBoundaries() {
 	}
 }
 
+type enemy interface {
+	GetID() int
+	IsDead() bool
+	Reward() int
+	MoveTowards(rl.Vector2) rl.Vector2
+	MoveAway(rl.Vector2) rl.Vector2
+	GetPos() rl.Vector2
+	UpdatePosition(rl.Vector2)
+	Draw()
+	DealDamage() float32
+	TakeDamage(float32)
+	Boundaries() rl.Rectangle
+}
+
 type gameState struct {
 	boundaries   *gameBoundaries
 	assets       *gameAssets
@@ -186,7 +198,7 @@ type gameState struct {
 	flares       []*flare.Flare
 	grenades     []*grenade.Grenade
 	soldiers     []*soldier.Soldier
-	enemies      []*enemy.Enemy
+	enemies      []enemy
 	projectiles  []*projectile.Projectile
 
 	itemStorage        *itemStorage
@@ -619,13 +631,28 @@ func (gs *gameState) renderProjectiles() {
 func (gs *gameState) cleanupDeadEnemies() {
 	aliveEnemies := gs.enemies[:0]
 	for _, e := range gs.enemies {
-		if e.Health <= 0 {
-			gs.score += e.Reward
+		if e.IsDead() {
+			gs.score += e.Reward()
 			continue
 		}
 		aliveEnemies = append(aliveEnemies, e)
 	}
 	gs.enemies = aliveEnemies
+}
+
+func newEnemy(pos rl.Vector2, assets *gameAssets) enemy {
+	// select enemy type
+	// 0 - basic
+	// 1 - fast
+	// 2 - tank
+
+	switch rand.Intn(3) {
+	case 0:
+		return basic.FromPos(pos, assets.basicEnemy)
+
+	default:
+		return basic.FromPos(pos, assets.basicEnemy)
+	}
 }
 
 func (gs *gameState) spawnEnemies() {
@@ -637,8 +664,7 @@ func (gs *gameState) spawnEnemies() {
 	gs.enemeSpawnedAgo = 0
 
 	newEnemyPos := gs.findPositionForEnemy()
-	newEnemy := enemy.FromPos(newEnemyPos, gs.assets.enemy)
-	gs.enemies = append(gs.enemies, newEnemy)
+	gs.enemies = append(gs.enemies, newEnemy(newEnemyPos, gs.assets))
 }
 
 func (gs *gameState) findPositionForEnemy() rl.Vector2 {
@@ -653,7 +679,7 @@ func (gs *gameState) findPositionForEnemy() rl.Vector2 {
 			Y: float32(rand.Intn(int(arenaBoundaries.Height))) + arenaBoundaries.Y,
 		}
 
-		boundaries := rlutils.TextureBoundaries(gs.assets.enemy, pos)
+		boundaries := rlutils.TextureBoundaries(gs.assets.basicEnemy, pos)
 
 		collissions := gs.prevQuadtree.Query(boundaries)
 		if len(collissions) == 0 {
@@ -662,42 +688,38 @@ func (gs *gameState) findPositionForEnemy() rl.Vector2 {
 	}
 }
 
-func (gs *gameState) processEnemies() []*enemy.Enemy {
-	flaredEnemies := make([]*enemy.Enemy, 0, len(gs.enemies)/3)
+func (gs *gameState) processEnemies() []enemy {
+	flaredEnemies := make([]enemy, 0, len(gs.enemies)/3)
 	for _, e := range gs.enemies {
-		nearestSoldier := findNearest(gs.soldiers, e.Pos)
+		nearestSoldier := findNearest(gs.soldiers, e.GetPos())
 		newPosition := e.MoveTowards(nearestSoldier.Pos)
-		e.State = enemy.Walking
 
-		enemyBoundaries := rlutils.TextureBoundaries(e.Texture, newPosition)
 		// soldiers didn't move yet, so we can use previous quadtree
-		soldierCollissions := gs.prevQuadtree.Query(enemyBoundaries)
+		soldierCollissions := gs.prevQuadtree.Query(e.Boundaries())
 
 		for _, c := range soldierCollissions {
 			if soldier, ok := c.Value.(*soldier.Soldier); ok {
-				soldier.Health -= e.Damage
-				e.State = enemy.Melee
-				newPosition = e.Pos // don't move if collission
+				soldier.Health -= e.DealDamage()
+				newPosition = e.GetPos() // don't move if collission
 			}
 		}
 
-		collissions := gs.quadtree.Query(enemyBoundaries)
+		collissions := gs.quadtree.Query(e.Boundaries())
 		for _, c := range collissions {
 			switch val := c.Value.(type) {
 			case *flare.Flare:
 				flaredEnemies = append(flaredEnemies, e)
 				// Try to move away from flare
-				e.State = enemy.Walking
 				newPosition = e.MoveAway(val.Pos)
 			case *projectile.Projectile:
-				e.Health -= val.Damage
+				e.TakeDamage(val.Damage)
 			case *grenade.Grenade:
-				e.Health -= val.Damage
+				e.TakeDamage(val.Damage)
 			}
 		}
 
-		e.Pos = newPosition
-		gs.quadtree.Insert(e.ID, enemyBoundaries, e)
+		e.UpdatePosition(newPosition)
+		gs.quadtree.Insert(e.GetID(), e.Boundaries(), e)
 	}
 
 	return flaredEnemies
@@ -719,7 +741,7 @@ func (gs *gameState) cleanupDeadSoldiers() {
 	gs.soldiers = aliveSoldiers
 }
 
-func (gs *gameState) processSoldiers(flaredEnemies []*enemy.Enemy) {
+func (gs *gameState) processSoldiers(flaredEnemies []enemy) {
 	for _, s := range gs.soldiers {
 		s.ProgressTime(rl.GetFrameTime())
 
@@ -731,9 +753,9 @@ func (gs *gameState) processSoldiers(flaredEnemies []*enemy.Enemy) {
 		for _, c := range collissions {
 			// TODO: if soldier is inside of flare - blind him
 			switch val := c.Value.(type) {
-			case *enemy.Enemy:
+			case enemy:
 				s.State = soldier.Melee
-				val.Health -= s.Damage
+				val.TakeDamage(s.Damage)
 			case *grenade.Grenade:
 				s.Health -= val.Damage
 			}
@@ -743,12 +765,12 @@ func (gs *gameState) processSoldiers(flaredEnemies []*enemy.Enemy) {
 			// try to find shooting target
 			nearestEnemy := findNearest(flaredEnemies, s.Pos)
 			if nearestEnemy != nil &&
-				s.WithinShootingRange(nearestEnemy.Pos) &&
+				s.WithinShootingRange(nearestEnemy.GetPos()) &&
 				s.CanShoot() {
 				s.Shoot()
 				s.State = soldier.Shooting
 				// spawn projectile
-				projectileVelocity := rl.Vector2Subtract(nearestEnemy.Pos, s.Pos)
+				projectileVelocity := rl.Vector2Subtract(nearestEnemy.GetPos(), s.Pos)
 				newProjectile := projectile.FromPos(s.Pos, projectileVelocity)
 				gs.projectiles = append(gs.projectiles, newProjectile)
 			}

@@ -47,12 +47,11 @@ type Soldier struct {
 	ShootingRate  float32
 
 	Walking rl.Texture2D
-	Melee   rl.Texture2D
 
 	ShootAgo float32
 }
 
-func FromPos(pos rl.Vector2, walking, melee rl.Texture2D) *Soldier {
+func FromPos(pos rl.Vector2, walking rl.Texture2D) *Soldier {
 	return &Soldier{
 		ID:    rand.Int(),
 		Pos:   pos,
@@ -66,7 +65,6 @@ func FromPos(pos rl.Vector2, walking, melee rl.Texture2D) *Soldier {
 		ShootingRate:  initialShootingRate,
 
 		Walking: walking,
-		Melee:   melee,
 
 		ShootAgo: initialShootingRate,
 	}
@@ -78,9 +76,9 @@ func (s *Soldier) Draw() {
 	case Standing:
 		texture = s.Walking
 	case Melee:
-		texture = s.Melee
+		texture = s.Walking // TODO: change to shooting texture
 	case Shooting:
-		texture = s.Melee // TODO: change to shooting texture
+		texture = s.Walking // TODO: change to shooting texture
 	}
 	// draw health bar above soldier
 	// +2 and +1 are to make the health bar look better
