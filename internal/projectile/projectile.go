@@ -12,6 +12,10 @@ const (
 	initialDamage = 10
 )
 
+type Shooter interface {
+	EarnExp(int)
+}
+
 type Projectile struct {
 	ID       int
 	Pos      rl.Vector2
@@ -19,9 +23,13 @@ type Projectile struct {
 
 	Radius float32
 	Damage float32
+
+	Shooter Shooter
+
+	Expired bool
 }
 
-func FromPos(pos, velocity rl.Vector2) *Projectile {
+func FromPos(pos, velocity rl.Vector2, shooter Shooter) *Projectile {
 	velocity = rl.Vector2Normalize(velocity)
 	velocity = rl.Vector2Scale(velocity, initialSpeed)
 	return &Projectile{
@@ -31,6 +39,8 @@ func FromPos(pos, velocity rl.Vector2) *Projectile {
 
 		Radius: initialRadius,
 		Damage: initialDamage,
+
+		Shooter: shooter,
 	}
 }
 

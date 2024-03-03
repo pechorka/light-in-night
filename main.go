@@ -282,9 +282,9 @@ func (gs *gameState) renderGame() {
 
 		gs.processProjectiles()
 
-		gs.cleanupDeadEnemies()
 		gs.spawnEnemies()
 		flaredEnemies := gs.processEnemies()
+		gs.cleanupDeadEnemies()
 
 		gs.cleanupDeadSoldiers()
 		gs.processSoldiers(flaredEnemies)
@@ -675,7 +675,7 @@ func (gs *gameState) processProjectiles() {
 	activeProjectiles := gs.projectiles[:0]
 	for _, p := range gs.projectiles {
 		p.Move()
-		if !rl.CheckCollisionPointRec(p.Pos, gs.boundaries.arenaBoundaries) {
+		if !rl.CheckCollisionPointRec(p.Pos, gs.boundaries.arenaBoundaries) || p.Expired {
 			continue
 		}
 		gs.quadtree.Insert(p.ID, p.Boundaries(), p)
@@ -688,18 +688,6 @@ func (gs *gameState) renderProjectiles() {
 	for _, p := range gs.projectiles {
 		p.Draw()
 	}
-}
-
-func (gs *gameState) cleanupDeadEnemies() {
-	aliveEnemies := gs.enemies[:0]
-	for _, e := range gs.enemies {
-		if e.IsDead() {
-			gs.score += e.Reward()
-			continue
-		}
-		aliveEnemies = append(aliveEnemies, e)
-	}
-	gs.enemies = aliveEnemies
 }
 
 func newEnemy(pos rl.Vector2, assets *gameAssets) enemy {
@@ -769,18 +757,33 @@ func (gs *gameState) processEnemies() []enemy {
 			}
 		}
 
+		flared := false
 		collissions := gs.quadtree.Query(e.Boundaries())
 		for _, c := range collissions {
 			switch val := c.Value.(type) {
 			case *flare.Flare:
-				flaredEnemies = append(flaredEnemies, e)
+				flared = true
 				// Try to move away from flare
 				newPosition = e.MoveAway(val.Pos)
 			case *projectile.Projectile:
-				e.TakeDamage(val.Damage)
+				if !val.Expired {
+					e.TakeDamage(val.Damage)
+					val.Expired = true
+				}
+				if e.IsDead() {
+					val.Shooter.EarnExp(e.Reward())
+				}
 			case *grenade.Grenade:
 				e.TakeDamage(val.Damage)
 			}
+		}
+
+		if e.IsDead() {
+			continue
+		}
+
+		if flared {
+			flaredEnemies = append(flaredEnemies, e)
 		}
 
 		e.UpdatePosition(newPosition)
@@ -788,6 +791,18 @@ func (gs *gameState) processEnemies() []enemy {
 	}
 
 	return flaredEnemies
+}
+
+func (gs *gameState) cleanupDeadEnemies() {
+	aliveEnemies := gs.enemies[:0]
+	for _, e := range gs.enemies {
+		if e.IsDead() {
+			gs.score += e.Reward()
+			continue
+		}
+		aliveEnemies = append(aliveEnemies, e)
+	}
+	gs.enemies = aliveEnemies
 }
 
 func (gs *gameState) renderEnemies() {
@@ -836,7 +851,7 @@ func (gs *gameState) processSoldiers(flaredEnemies []enemy) {
 				s.State = soldier.Shooting
 				// spawn projectile
 				projectileVelocity := rl.Vector2Subtract(nearestEnemy.GetPos(), s.Pos)
-				newProjectile := projectile.FromPos(s.Pos, projectileVelocity)
+				newProjectile := projectile.FromPos(s.Pos, projectileVelocity, s)
 				gs.projectiles = append(gs.projectiles, newProjectile)
 			}
 		}

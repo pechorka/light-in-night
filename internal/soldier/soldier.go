@@ -49,6 +49,8 @@ type Soldier struct {
 	Walking rl.Texture2D
 
 	ShootAgo float32
+
+	exp int
 }
 
 func FromPos(pos rl.Vector2, walking rl.Texture2D) *Soldier {
@@ -68,6 +70,10 @@ func FromPos(pos rl.Vector2, walking rl.Texture2D) *Soldier {
 
 		ShootAgo: initialShootingRate,
 	}
+}
+
+func (s *Soldier) EarnExp(exp int) {
+	s.exp += exp
 }
 
 func (s *Soldier) Draw() {
