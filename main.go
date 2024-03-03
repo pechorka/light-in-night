@@ -4,6 +4,7 @@ import (
 	"embed"
 	"math"
 	"math/rand"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -291,6 +292,8 @@ func (gs *gameState) renderGame() {
 
 	gs.renderHeader()
 	gs.renderFooter()
+	gs.selectConsumables()
+	gs.renderConsumables()
 	// gs.renderSoldierStorage()
 	// gs.renderItemSelector()
 	// gs.placeDraggedSoldier()
@@ -393,6 +396,38 @@ func (gs *gameState) renderFooter() {
 			}
 		}
 	}
+}
+
+func (gs *gameState) selectConsumables() {
+	if rl.IsKeyPressed(rl.KeyOne) {
+		gs.selectedConsumable = flares
+	}
+	if rl.IsKeyPressed(rl.KeyTwo) {
+		gs.selectedConsumable = grenades
+	}
+}
+
+func (gs *gameState) renderConsumables() {
+	// in right top corner bellow header
+	var widths []int32
+	flareText := "1 -> Flares: " + strconv.Itoa(gs.itemStorage.flareCount)
+	widths = append(widths, rl.MeasureText(flareText, 20))
+
+	grenadeText := "2 -> Grenades: " + strconv.Itoa(gs.itemStorage.grenadeCount)
+	widths = append(widths, rl.MeasureText(grenadeText, 20))
+
+	color := func(selected consumable) rl.Color {
+		if gs.selectedConsumable == selected {
+			return rl.Green
+		}
+		return rl.White
+	}
+
+	x := int32(gs.boundaries.screenWidth) - 10 - slices.Max(widths)
+	y := int32(gs.boundaries.headerBoundaries.Y+gs.boundaries.headerBoundaries.Height) + 10
+	rl.DrawText(flareText, x, y, 20, color(flares))
+	y += 30
+	rl.DrawText(grenadeText, x, y, 20, color(grenades))
 }
 
 // func (gs *gameState) renderSoldierStorage() {
