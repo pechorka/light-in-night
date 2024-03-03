@@ -1361,6 +1361,8 @@ func (gs *gameState) reset() {
 	gs.nameInput = ""
 	gs.victory = false
 	gs.selectedConsumable = flares
+	gs.itemStorage.flareCount = initialFlareCount
+	gs.itemStorage.grenadeCount = initialGrenadeCount
 }
 
 func (gs *gameState) renderLeaderboardScreen() {
