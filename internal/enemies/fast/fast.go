@@ -1,4 +1,4 @@
-package basic
+package fast
 
 import (
 	"math/rand"
@@ -8,10 +8,10 @@ import (
 )
 
 const (
-	initialSpeed  = 1
-	initialHealth = 20
-	initialDamage = 10
-	initialReward = 10
+	initialSpeed  = 3
+	initialHealth = 10
+	initialDamage = 5
+	initialReward = 15
 )
 
 type Enemy struct {
@@ -78,7 +78,7 @@ func (e *Enemy) UpdatePosition(pos rl.Vector2) {
 func (e *Enemy) Draw() {
 	rl.DrawTexture(e.Texture, int32(e.Pos.X), int32(e.Pos.Y), rl.White)
 
-	name := "basic"
+	name := "fast"
 	rl.DrawText(name, int32(e.Pos.X), int32(e.Pos.Y-10), 10, rl.Red)
 }
 

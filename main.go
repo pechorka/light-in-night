@@ -10,6 +10,8 @@ import (
 	"github.com/pechorka/illuminate-game-jam/internal/consumables/flare"
 	"github.com/pechorka/illuminate-game-jam/internal/consumables/grenade"
 	"github.com/pechorka/illuminate-game-jam/internal/enemies/basic"
+	"github.com/pechorka/illuminate-game-jam/internal/enemies/fast"
+	"github.com/pechorka/illuminate-game-jam/internal/enemies/tank"
 	"github.com/pechorka/illuminate-game-jam/internal/projectile"
 	"github.com/pechorka/illuminate-game-jam/internal/soldier"
 	"github.com/pechorka/illuminate-game-jam/pkg/data_structures/quadtree"
@@ -61,8 +63,15 @@ func main() {
 	gs := &gameState{
 		boundaries: gb,
 		assets: &gameAssets{
-			soldier:    loadTextureFromImage("assets/soldier.png"),
-			basicEnemy: loadTextureFromImage("assets/enemy.png"),
+			soldier: loadTextureFromImage("assets/soldier.png"),
+			enemy: &enemyAssets{
+				// basic: loadTextureFromImage("assets/enemy/basic.png"),
+				// fast:  loadTextureFromImage("assets/enemy/fast.png"),
+				// tank:  loadTextureFromImage("assets/enemy/tank.png"),
+				basic: loadTextureFromImage("assets/enemy.png"),
+				fast:  loadTextureFromImage("assets/enemy.png"),
+				tank:  loadTextureFromImage("assets/enemy.png"),
+			},
 		},
 		prevQuadtree: quadtree.NewQuadtree(gb.arenaBoundaries, quadtreeCapacity),
 		quadtree:     quadtree.NewQuadtree(gb.arenaBoundaries, quadtreeCapacity),
@@ -101,13 +110,21 @@ func loadTextureFromImage(imgPath string) rl.Texture2D {
 	fileExtention := imgPath[strings.LastIndexByte(imgPath, '.'):]
 	img := rl.LoadImageFromMemory(fileExtention, file, int32(len(file)))
 	defer rl.UnloadImage(img)
-	return rl.LoadTextureFromImage(img)
+	texture := rl.LoadTextureFromImage(img)
+
+	return texture
 }
 
 type gameAssets struct {
 	soldier rl.Texture2D
 
-	basicEnemy rl.Texture2D
+	enemy *enemyAssets
+}
+
+type enemyAssets struct {
+	basic rl.Texture2D
+	fast  rl.Texture2D
+	tank  rl.Texture2D
 }
 
 type gameScreen int
@@ -648,10 +665,13 @@ func newEnemy(pos rl.Vector2, assets *gameAssets) enemy {
 
 	switch rand.Intn(3) {
 	case 0:
-		return basic.FromPos(pos, assets.basicEnemy)
-
+		return basic.FromPos(pos, assets.enemy.basic)
+	case 1:
+		return fast.FromPos(pos, assets.enemy.fast)
+	case 2:
+		return tank.FromPos(pos, assets.enemy.tank)
 	default:
-		return basic.FromPos(pos, assets.basicEnemy)
+		return basic.FromPos(pos, assets.enemy.basic)
 	}
 }
 
@@ -663,11 +683,11 @@ func (gs *gameState) spawnEnemies() {
 
 	gs.enemeSpawnedAgo = 0
 
-	newEnemyPos := gs.findPositionForEnemy()
-	gs.enemies = append(gs.enemies, newEnemy(newEnemyPos, gs.assets))
+	newEnemy := gs.spawnEnemy()
+	gs.enemies = append(gs.enemies, newEnemy)
 }
 
-func (gs *gameState) findPositionForEnemy() rl.Vector2 {
+func (gs *gameState) spawnEnemy() enemy {
 	arenaBoundaries := gs.boundaries.arenaBoundaries
 	for {
 
@@ -679,11 +699,11 @@ func (gs *gameState) findPositionForEnemy() rl.Vector2 {
 			Y: float32(rand.Intn(int(arenaBoundaries.Height))) + arenaBoundaries.Y,
 		}
 
-		boundaries := rlutils.TextureBoundaries(gs.assets.basicEnemy, pos)
+		newEnemy := newEnemy(pos, gs.assets)
 
-		collissions := gs.prevQuadtree.Query(boundaries)
+		collissions := gs.prevQuadtree.Query(newEnemy.Boundaries())
 		if len(collissions) == 0 {
-			return pos
+			return newEnemy
 		}
 	}
 }
