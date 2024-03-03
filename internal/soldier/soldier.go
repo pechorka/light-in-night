@@ -8,12 +8,18 @@ import (
 )
 
 const (
-	initialSpeed         = 2
-	initialHealth        = 100
-	initialDamage        = 10
-	initialShootingRange = 100
-	initialShootingRate  = 2
-	initialState         = Standing
+	initialSpeed            = 2
+	initialHealth           = 100
+	initialDamage           = 10
+	initialShootingRange    = 100
+	initialShootingRate     = 0.5
+	initialState            = Standing
+	initialLevelUpThreshold = 30
+)
+
+const (
+	nextLevelThreshold = 30 // percent more than previous level
+	statUp             = 10 // increase by percent when leveling up
 )
 
 const (
@@ -50,7 +56,8 @@ type Soldier struct {
 
 	ShootAgo float32
 
-	exp int
+	exp              int
+	levelUpThreshold int
 }
 
 func FromPos(pos rl.Vector2, walking rl.Texture2D) *Soldier {
@@ -68,12 +75,25 @@ func FromPos(pos rl.Vector2, walking rl.Texture2D) *Soldier {
 
 		Walking: walking,
 
-		ShootAgo: initialShootingRate,
+		ShootAgo:         initialShootingRate,
+		levelUpThreshold: initialLevelUpThreshold,
 	}
 }
 
 func (s *Soldier) EarnExp(exp int) {
 	s.exp += exp
+	if s.exp >= s.levelUpThreshold {
+		s.levelUpThreshold = s.levelUpThreshold + s.levelUpThreshold*nextLevelThreshold/100
+		s.levelUp()
+	}
+}
+
+func (s *Soldier) levelUp() {
+	s.MaxHealth += s.MaxHealth * statUp / 100
+	s.Health = s.MaxHealth
+	s.Damage += s.Damage * statUp / 100
+	s.ShootingRange += s.ShootingRange * statUp / 100
+	s.ShootingRate -= s.ShootingRate * statUp / 100
 }
 
 func (s *Soldier) Draw() {
