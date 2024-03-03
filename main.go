@@ -399,7 +399,7 @@ func (gs *gameState) placeSoldiersOnRandomPositions(soldierCount int) {
 	ab := gs.boundaries.arenaBoundaries
 	for soldierCount > 0 {
 		pos := rl.Vector2{
-			X: rlutils.RandomFloat(ab.X, ab.Width+ab.X),
+			X: rlutils.RandomFloat(ab.X+100, ab.Width+ab.X-100),
 			Y: rlutils.RandomFloat(ab.Y+100, ab.Height+ab.Y-100),
 		}
 		newSoldier := soldier.FromPos(pos, gs.assets.soldier)
@@ -927,7 +927,7 @@ func (gs *gameState) processEnemies() []enemy {
 					val.Expired = true
 				}
 				if e.IsDead() {
-					val.Shooter.EarnExp(e.Reward())
+					val.Shooter.EarnExp(reward(e.Reward()))
 				}
 			case *grenade.Grenade:
 				e.TakeDamage(val.Damage)
@@ -953,8 +953,8 @@ func (gs *gameState) cleanupDeadEnemies() {
 	aliveEnemies := gs.enemies[:0]
 	for _, e := range gs.enemies {
 		if e.IsDead() {
-			gs.score += e.Reward()
-			gs.money += e.Reward()
+			gs.score += reward(e.Reward())
+			gs.money += reward(e.Reward())
 			continue
 		}
 		aliveEnemies = append(aliveEnemies, e)
@@ -1085,4 +1085,9 @@ func (gs *gameState) drawDescription(description string) {
 	rl.DrawRectangleLinesEx(descriptionBoundaries, 2, rl.White)
 
 	rlutils.DrawTextAtCenterOfRectangle(description, descriptionBoundaries, 20, rl.White)
+}
+
+func reward(base int) int {
+	multiplier := 4 / soldierCount
+	return base * multiplier
 }
