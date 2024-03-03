@@ -36,6 +36,8 @@ const (
 	maxNameLength = 10
 )
 
+const gameTitle = "Light in Night"
+
 var (
 	helpLabelInitialPos = rl.Vector2{X: 10, Y: 10}
 	helpLabelSpacing    = int32(30)
@@ -78,7 +80,7 @@ func main() {
 	gb.updateBoundaries()
 
 	rl.SetConfigFlags(rl.FlagWindowResizable)
-	rl.InitWindow(int32(gb.screenWidth), int32(gb.screenHeight), "Click to survive!")
+	rl.InitWindow(int32(gb.screenWidth), int32(gb.screenHeight), gameTitle)
 	// rl.InitAudioDevice()
 
 	gs := &gameState{
@@ -350,12 +352,19 @@ func (gs *gameState) renderMainMenu() {
 			gs.gameScreen = nextScreen
 		}
 	}
+
 	items := []menuItem{
 		{name: "New game", action: actionNextScreen(gameScreenSetupGame)},
 		{name: "Leaderboard", action: actionNextScreen(gameScreenLeaderboard)},
 		{name: "How to play", action: actionNextScreen(gameScreenHowToPlay)},
 		{name: "Exit", action: func() { closeWindow = true }},
 	}
+
+	titleX := int32(gs.boundaries.screenBoundaries.Width / 2)
+	titleY := int32(gs.boundaries.screenBoundaries.Y + 10)
+	titleFontSize := int32(100)
+	titleWidth := rl.MeasureText(gameTitle, titleFontSize)
+	rl.DrawText(gameTitle, titleX-titleWidth/2, titleY, titleFontSize, rl.White)
 
 	x := int32(gs.boundaries.screenBoundaries.Width / 2)
 	y := int32(gs.boundaries.screenBoundaries.Height / 3)
@@ -1467,6 +1476,7 @@ func buttonToString(btn int32) string {
 }
 
 func reward(base int) int {
-	multiplier := 4 / soldierCount
+	// multiplier := 4 / soldierCount // Playtest
+	multiplier := 1
 	return base * multiplier
 }
