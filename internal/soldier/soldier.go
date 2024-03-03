@@ -172,3 +172,7 @@ func (s *Soldier) ProgressTime(dt float32) {
 func (s *Soldier) GetPos() rl.Vector2 {
 	return s.Pos
 }
+
+func (s *Soldier) Boundaries() rl.Rectangle {
+	return rlutils.TextureBoundaries(s.Walking, s.Pos)
+}

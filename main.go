@@ -397,12 +397,25 @@ func (gs *gameState) renderSetupGameScreen() {
 func (gs *gameState) placeSoldiersOnRandomPositions(soldierCount int) {
 	gs.soldiers = make([]*soldier.Soldier, 0, soldierCount)
 	ab := gs.boundaries.arenaBoundaries
+	ab = rl.Rectangle{
+		X:      ab.X + 100,
+		Y:      ab.Y + 100,
+		Width:  ab.Width - 100,
+		Height: ab.Height - 100,
+	}
+	quadtree := quadtree.NewQuadtree(ab, quadtreeCapacity)
 	for soldierCount > 0 {
 		pos := rl.Vector2{
 			X: rlutils.RandomFloat(ab.X+100, ab.Width+ab.X-100),
 			Y: rlutils.RandomFloat(ab.Y+100, ab.Height+ab.Y-100),
 		}
 		newSoldier := soldier.FromPos(pos, gs.assets.soldier)
+
+		collisions := quadtree.Query(newSoldier.Boundaries())
+		if len(collisions) > 0 {
+			continue
+		}
+		quadtree.Insert(newSoldier.ID, newSoldier.Boundaries(), newSoldier)
 		gs.soldiers = append(gs.soldiers, newSoldier)
 		soldierCount--
 	}
