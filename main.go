@@ -655,6 +655,27 @@ func (gs *gameState) renderFooter() {
 			buyItem(item)
 		}
 	}
+
+	// in right side render "End run" button
+	endRunText := "End run"
+	endRunFontSize := int32(50)
+	endRunTextWidth := rl.MeasureText(endRunText, endRunFontSize)
+	endRunTextX := int32(footerBoundaries.X+footerBoundaries.Width-10) - endRunTextWidth
+	endRunTextY := int32(footerBoundaries.Y + 30)
+	endRunTextBoundaries := rl.Rectangle{
+		X:      float32(endRunTextX),
+		Y:      float32(endRunTextY),
+		Width:  float32(endRunTextWidth) + 10,
+		Height: float32(endRunFontSize) + 10,
+	}
+	color := rl.White
+	if rl.CheckCollisionPointRec(rl.GetMousePosition(), endRunTextBoundaries) {
+		color = rl.Green
+		if rl.IsMouseButtonPressed(rl.MouseLeftButton) {
+			gs.gameScreen = gameScreenOver
+		}
+	}
+	rl.DrawText(endRunText, endRunTextX, endRunTextY, endRunFontSize, color)
 }
 
 func (gs *gameState) renderHowToPlayScreen() {
