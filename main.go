@@ -187,7 +187,7 @@ func (gb *gameBoundaries) updateBoundaries() {
 	arenaWidth := gb.screenBoundaries.Width
 
 	gb.arenaBoundaries = rl.Rectangle{
-		X:      gb.screenBoundaries.Width * 0.15,
+		X:      gb.headerBoundaries.X,
 		Y:      gb.headerBoundaries.Height,
 		Width:  arenaWidth,
 		Height: arenaHeight,
@@ -339,19 +339,18 @@ func (gs *gameState) renderFooter() {
 	// when hovered - show description
 	type shopItem struct {
 		price       int
+		count       int
 		name        string
 		description string
 		icon        rl.Texture2D
+		ctype       consumable
 	}
 
 	// TODO: shop can have items to increase difficulty, but with higher rewards
 	// for example: princess that needs to be protected for some time, but gives a lot of money
 	mockItems := []shopItem{
-		{price: 10, name: "Soldier", icon: gs.assets.soldier, description: "Basic soldier"},
-		{price: 20, name: "Flare", icon: gs.assets.soldier, description: "Reveals enemies"},
-		{price: 30, name: "Turret", icon: gs.assets.soldier, description: "Shoots enemies"},
-		{price: 40, name: "Princess", icon: gs.assets.soldier, description: "Needs to be protected"},
-		{price: 50, name: "Dragon", icon: gs.assets.soldier, description: "Does a lot of damage"},
+		{price: 10, count: 10, name: "Flare", description: "Reveals enemies", icon: gs.assets.soldier, ctype: flares},
+		{price: 20, count: 1, name: "Grenade", description: "Deals damage", icon: gs.assets.soldier, ctype: grenades},
 	}
 	itemWidth := float32(100)
 	itemHeight := footerBoundaries.Height - 20 // 10px margin on each side
@@ -363,13 +362,21 @@ func (gs *gameState) renderFooter() {
 			Height: itemHeight,
 		}
 		rl.DrawRectangleLinesEx(itemBoundaries, 2, rl.White)
-		// draw price in top left corner and icon in center
-		priceText := strconv.Itoa(item.price)
+		// draw price in top left corner
+		priceText := strconv.Itoa(item.price) + "$"
 		priceTextPos := rl.Vector2{
 			X: itemBoundaries.X + 10,
 			Y: itemBoundaries.Y + 10,
 		}
 		rl.DrawText(priceText, int32(priceTextPos.X), int32(priceTextPos.Y), 20, rl.White)
+
+		// draw count in top right corner
+		countText := strconv.Itoa(item.count)
+		countTextPos := rl.Vector2{
+			X: itemBoundaries.X + itemBoundaries.Width - 10 - float32(rl.MeasureText(countText, 20)),
+			Y: itemBoundaries.Y + 10,
+		}
+		rl.DrawText(countText, int32(countTextPos.X), int32(countTextPos.Y), 20, rl.White)
 
 		iconPos := rl.Vector2{
 			X: itemBoundaries.X + itemBoundaries.Width/2 - float32(item.icon.Width/2),
@@ -390,8 +397,11 @@ func (gs *gameState) renderFooter() {
 			gs.drawDescription(item.description)
 
 			if rl.IsMouseButtonPressed(rl.MouseLeftButton) {
-				if i == 1 { // flare
-					gs.itemStorage.flareCount += 10
+				switch item.ctype {
+				case flares:
+					gs.itemStorage.flareCount += item.count
+				case grenades:
+					gs.itemStorage.grenadeCount += item.count
 				}
 			}
 		}
