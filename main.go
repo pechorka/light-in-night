@@ -2,6 +2,7 @@ package main
 
 import (
 	"embed"
+	"fmt"
 	"math"
 	"math/rand"
 	"os"
@@ -286,10 +287,6 @@ func (gs *gameState) renderFrame() {
 		gs.paused = !gs.paused
 	}
 
-	if rl.IsKeyPressed(rl.KeyG) { // for testing purposes
-		gs.gameScreen = gameScreenOver
-	}
-
 	if gs.boundaries.update() {
 		gs.prevQuadtree = quadtree.NewQuadtree(gs.boundaries.arenaBoundaries, quadtreeCapacity)
 		gs.quadtree = quadtree.NewQuadtree(gs.boundaries.arenaBoundaries, quadtreeCapacity)
@@ -309,7 +306,7 @@ func (gs *gameState) renderFrame() {
 	case gameScreenOver:
 		gs.renderGameOver()
 	case gameScreenLeaderboard:
-		gs.renderTodoScreen()
+		gs.renderLeaderboardScreen()
 	case gameScreenHowToPlay:
 		gs.renderHowToPlayScreen()
 	}
@@ -554,7 +551,7 @@ func gameTimeToString(time float32) string {
 	timeInt := int(time)
 	minutes := timeInt / 60
 	seconds := timeInt % 60
-	return strconv.Itoa(minutes) + ":" + strconv.Itoa(seconds)
+	return fmt.Sprintf("%02d:%02d", minutes, seconds)
 }
 
 type shopItem struct {
@@ -1246,11 +1243,14 @@ func (gs *gameState) saveScore() {
 
 	rl.TraceLog(rl.LogInfo, "Saving score for %s: %d", gs.nameInput, gs.score)
 
-	gs.db.AddHighscore(db.Highscore{
+	err := gs.db.AddHighscore(db.Highscore{
 		Name:  gs.nameInput,
 		Score: gs.score,
 		Time:  gs.gameTime,
 	})
+	if err != nil {
+		rl.TraceLog(rl.LogError, "Error saving highscore: %v", err)
+	}
 }
 
 func (gs *gameState) reset() {
@@ -1264,6 +1264,46 @@ func (gs *gameState) reset() {
 	gs.projectiles = nil
 	soldierCount = 0
 	gs.nameInput = ""
+}
+
+func (gs *gameState) renderLeaderboardScreen() {
+	leaderboard, err := gs.db.GetHighscores()
+	if err != nil {
+		rl.TraceLog(rl.LogError, "Error getting highscores: %v", err)
+		rlutils.DrawTextAtCenterOfRectangle("Could not get highscores", gs.boundaries.screenBoundaries, 20, rl.White)
+		return
+	}
+	x := int32(gs.boundaries.screenBoundaries.Width / 2)
+	y := int32(gs.boundaries.screenBoundaries.Y + 10)
+
+	leaderboardTitle := "Leaderboard"
+	leaderboardTitleWidth := rl.MeasureText(leaderboardTitle, 50)
+	leaderboardTitleX := x - leaderboardTitleWidth/2
+	rl.DrawText(leaderboardTitle, leaderboardTitleX, y, 50, rl.White)
+	y += 60
+
+	spacing := int32(30)
+	fontSize := int32(20)
+
+	nameX := x - 200
+	scoreX := x + 200
+
+	for _, score := range leaderboard {
+		name := score.Name
+		rl.DrawText(name, nameX, y, fontSize, rl.White)
+		score := fmt.Sprintf("%d points in %s", score.Score, gameTimeToString(score.Time))
+		scoreWidth := rl.MeasureText(score, fontSize)
+		rl.DrawText(score, scoreX-scoreWidth, y, fontSize, rl.White)
+		y += spacing
+	}
+
+	backButton := "Click anywhere to return to the main menu"
+	backButtonWidth := rl.MeasureText(backButton, fontSize)
+	backButtonX := x - backButtonWidth/2
+	rl.DrawText(backButton, backButtonX, y+20, fontSize, rl.Gray) // Draw back button text
+	if rl.IsMouseButtonPressed(rl.MouseLeftButton) {
+		gs.gameScreen = gameScreenMainMenu // Return to main menu on click
+	}
 }
 
 func renderHelpLabels(labels ...string) {
