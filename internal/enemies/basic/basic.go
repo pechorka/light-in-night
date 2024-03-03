@@ -9,14 +9,14 @@ import (
 )
 
 const (
-	speedFrom = 1.0
-	speedTo   = 2.0
+	speedFrom = 0.8
+	speedTo   = 1.3
 
-	healthFrom = 10.0
-	healthTo   = 20.0
+	healthFrom = 40.0
+	healthTo   = 80.0
 
-	damageFrom = 10.0
-	damageTo   = 20.0
+	damageFrom = 9.0
+	damageTo   = 19.0
 )
 
 type Enemy struct {

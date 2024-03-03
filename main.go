@@ -82,6 +82,8 @@ func main() {
 	rl.SetConfigFlags(rl.FlagWindowResizable)
 	rl.InitWindow(int32(gb.screenWidth), int32(gb.screenHeight), gameTitle)
 	// rl.InitAudioDevice()
+	windowIcon := loadImageFromMemory("assets/app.ico")
+	rl.SetWindowIcon(*windowIcon)
 
 	gs := &gameState{
 		boundaries: gb,
@@ -127,6 +129,7 @@ func main() {
 	}
 
 	gs.assets.unload()
+	rl.UnloadImage(windowIcon)
 	// rl.CloseAudioDevice()
 
 	rl.CloseWindow()
@@ -143,6 +146,15 @@ func loadTextureFromImage(imgPath string) rl.Texture2D {
 	texture := rl.LoadTextureFromImage(img)
 
 	return texture
+}
+
+func loadImageFromMemory(imgPath string) *rl.Image {
+	file, err := assets.ReadFile(imgPath)
+	if err != nil {
+		panic(err)
+	}
+	fileExtention := imgPath[strings.LastIndexByte(imgPath, '.'):]
+	return rl.LoadImageFromMemory(fileExtention, file, int32(len(file)))
 }
 
 func loadMusicStream(musicPath string) rl.Music {

@@ -12,8 +12,8 @@ const (
 	speedFrom = 0.4
 	speedTo   = 0.8
 
-	healthFrom = 40.0
-	healthTo   = 80.0
+	healthFrom = 60.0
+	healthTo   = 160.0
 
 	damageFrom = 20.0
 	damageTo   = 30.0
