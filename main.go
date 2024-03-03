@@ -536,6 +536,7 @@ type shopItem struct {
 	description string
 	icon        rl.Texture2D
 	ctype       consumable
+	quickBuyBtn int32
 }
 
 func (gs *gameState) renderFooter() {
@@ -544,11 +545,34 @@ func (gs *gameState) renderFooter() {
 	// TODO: shop can have items to increase difficulty, but with higher rewards
 	// for example: princess that needs to be protected for some time, but gives a lot of money
 	mockItems := []shopItem{
-		{price: 10, count: 10, name: "Flare", description: "Reveals enemies", icon: gs.assets.consumables.flare, ctype: flares},
-		{price: 20, count: 1, name: "Grenade", description: "Deals damage", icon: gs.assets.consumables.grenade, ctype: grenades},
+		{
+			price: 10, count: 10,
+			name: "Flare", description: "Reveals enemies",
+			icon:        gs.assets.consumables.flare,
+			ctype:       flares,
+			quickBuyBtn: rl.KeyQ,
+		},
+		{
+			price: 20, count: 1,
+			name: "Grenade", description: "Deals damage",
+			icon:        gs.assets.consumables.grenade,
+			ctype:       grenades,
+			quickBuyBtn: rl.KeyW,
+		},
 	}
 	itemWidth := float32(100)
 	itemHeight := footerBoundaries.Height - 20 // 10px margin on each side
+	buyItem := func(item shopItem) {
+		if gs.money >= item.price {
+			gs.money -= item.price
+			switch item.ctype {
+			case flares:
+				gs.itemStorage.flareCount += item.count
+			case grenades:
+				gs.itemStorage.grenadeCount += item.count
+			}
+		}
+	}
 	for i, item := range mockItems {
 		itemBoundaries := rl.Rectangle{
 			X:      footerBoundaries.X + 10 + float32(i)*(itemWidth+10),
@@ -569,15 +593,13 @@ func (gs *gameState) renderFooter() {
 			// description should be displayed above the item with border
 			gs.drawShopItemDescription(item)
 
-			if rl.IsMouseButtonPressed(rl.MouseLeftButton) && gs.money >= item.price {
-				gs.money -= item.price
-				switch item.ctype {
-				case flares:
-					gs.itemStorage.flareCount += item.count
-				case grenades:
-					gs.itemStorage.grenadeCount += item.count
-				}
+			if rl.IsMouseButtonPressed(rl.MouseLeftButton) {
+				buyItem(item)
 			}
+		}
+
+		if rl.IsKeyPressed(item.quickBuyBtn) {
+			buyItem(item)
 		}
 	}
 }
@@ -1151,8 +1173,23 @@ func (gs *gameState) drawShopItemDescription(item shopItem) {
 	count := "Count: " + strconv.Itoa(item.count)
 	rl.DrawText(count, x, y, 20, rl.White)
 	y += spacing
+	quickBuy := "Quick buy: " + buttonToString(item.quickBuyBtn)
+	rl.DrawText(quickBuy, x, y, 20, rl.White)
+	y += spacing
 	description := "Description: " + item.description
 	rl.DrawText(description, x, y, 20, rl.White)
+}
+
+func buttonToString(btn int32) string {
+	switch btn {
+	case rl.KeyQ:
+		return "Q"
+	case rl.KeyW:
+		return "W"
+	default:
+		return ""
+	}
+
 }
 
 func reward(base int) int {

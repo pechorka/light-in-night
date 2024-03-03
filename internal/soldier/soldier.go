@@ -27,11 +27,6 @@ const (
 	healthbarHeight float32 = 10
 )
 
-const (
-	reloadBarWidth  float32 = healthbarWidth
-	reloadBarHeight float32 = healthbarHeight / 2
-)
-
 type State int
 
 const (
