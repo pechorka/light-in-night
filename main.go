@@ -81,11 +81,12 @@ func main() {
 
 	rl.SetConfigFlags(rl.FlagWindowResizable)
 	rl.InitWindow(int32(gb.screenWidth), int32(gb.screenHeight), "Click to survive!")
-	rl.SetTargetFPS(60)
+	// rl.InitAudioDevice()
 
 	gs := &gameState{
 		boundaries: gb,
 		assets: &gameAssets{
+			// titleMusic: loadMusicStream("assets/sounds/music/title.mp3"),
 			soldier: loadTextureFromImage("assets/soldier.png"),
 			enemy: &enemyAssets{
 				basic: loadTextureFromImage("assets/enemy/basic.png"),
@@ -111,10 +112,9 @@ func main() {
 		db: db,
 	}
 
-	gs.soldiers = append(gs.soldiers, soldier.FromPos(rl.Vector2{
-		X: gb.arenaBoundaries.Width / 2,
-		Y: gb.arenaBoundaries.Height / 2,
-	}, gs.assets.soldier))
+	// rl.PlayMusicStream(gs.assets.titleMusic)
+
+	rl.SetTargetFPS(60)
 
 	for !(rl.WindowShouldClose() || closeWindow) {
 		rl.BeginDrawing()
@@ -123,6 +123,9 @@ func main() {
 
 		rl.EndDrawing()
 	}
+
+	gs.assets.unload()
+	// rl.CloseAudioDevice()
 
 	rl.CloseWindow()
 }
@@ -140,11 +143,33 @@ func loadTextureFromImage(imgPath string) rl.Texture2D {
 	return texture
 }
 
+func loadMusicStream(musicPath string) rl.Music {
+	file, err := assets.ReadFile(musicPath)
+	if err != nil {
+		panic(err)
+	}
+	fileExtention := musicPath[strings.LastIndexByte(musicPath, '.'):]
+	music := rl.LoadMusicStreamFromMemory(fileExtention, file, int32(len(file)))
+
+	return music
+}
+
 type gameAssets struct {
-	soldier rl.Texture2D
+	soldier    rl.Texture2D
+	titleMusic rl.Music
 
 	enemy       *enemyAssets
 	consumables *consumableAssets
+}
+
+func (ga *gameAssets) unload() {
+	rl.UnloadTexture(ga.soldier)
+	rl.UnloadMusicStream(ga.titleMusic)
+	rl.UnloadTexture(ga.enemy.basic)
+	rl.UnloadTexture(ga.enemy.fast)
+	rl.UnloadTexture(ga.enemy.tank)
+	rl.UnloadTexture(ga.consumables.flare)
+	rl.UnloadTexture(ga.consumables.grenade)
 }
 
 type enemyAssets struct {
