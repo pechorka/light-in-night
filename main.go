@@ -49,8 +49,12 @@ var (
 	enemySpawnRate = float32(1)
 )
 
-// TODO: disgusting global variable
+// TODO: disgusting global variables
 var closeWindow = false
+
+var (
+	soldierCount int // 1-4
+)
 
 func main() {
 
@@ -134,6 +138,7 @@ type gameScreen int
 
 const (
 	gameScreenMainMenu gameScreen = iota
+	gameScreenSetupGame
 	gameScreenGame
 	gameScreenOver
 	gameScreenLeaderboard
@@ -266,6 +271,8 @@ func (gs *gameState) renderFrame() {
 	switch gs.gameScreen {
 	case gameScreenMainMenu:
 		gs.renderMainMenu()
+	case gameScreenSetupGame:
+		gs.renderSetupGameScreen()
 	case gameScreenGame:
 		gs.renderGame()
 	case gameScreenOver:
@@ -288,7 +295,7 @@ func (gs *gameState) renderMainMenu() {
 		}
 	}
 	items := []menuItem{
-		{name: "New game", action: actionNextScreen(gameScreenGame)},
+		{name: "New game", action: actionNextScreen(gameScreenSetupGame)},
 		{name: "Leaderboard", action: actionNextScreen(gameScreenLeaderboard)},
 		{name: "How to play", action: actionNextScreen(gameScreenHowToPlay)},
 		{name: "Exit", action: func() { closeWindow = true }},
@@ -319,6 +326,85 @@ func (gs *gameState) renderMainMenu() {
 		}
 
 		rl.DrawText(item.name, textX, textY, centerLabelFontSize, color)
+	}
+}
+
+func (gs *gameState) renderSetupGameScreen() {
+	x := int32(gs.boundaries.screenBoundaries.Width / 2)
+	y := int32(gs.boundaries.screenBoundaries.Height / 3)
+	spacing := int32(50)
+	fontSize := int32(30)
+
+	numberOfSoldiersItem := "Select number of soldiers: "
+	numberOfSoldiersItemWidth := rl.MeasureText(numberOfSoldiersItem, fontSize)
+	numberOfSoldiersItemX := x - numberOfSoldiersItemWidth/2
+	numberOfSoldiersItemY := y
+
+	rl.DrawText(numberOfSoldiersItem, numberOfSoldiersItemX, numberOfSoldiersItemY, fontSize, rl.White)
+
+	optionX := numberOfSoldiersItemX + numberOfSoldiersItemWidth
+	optionY := numberOfSoldiersItemY
+	optionWidth := rl.MeasureText("4", fontSize)
+	for i := range 4 {
+		option := strconv.Itoa(i + 1)
+
+		optionX += optionWidth + 10
+		optionBoundaries := rl.Rectangle{
+			X:      float32(optionX) - 5,
+			Y:      float32(optionY) - 5,
+			Width:  float32(optionWidth) + 10,
+			Height: float32(centerLabelFontSize),
+		}
+
+		color := rl.White
+		if rl.CheckCollisionPointRec(rl.GetMousePosition(), optionBoundaries) {
+			color = rl.Green
+			if rl.IsMouseButtonPressed(rl.MouseLeftButton) {
+				soldierCount = i + 1
+				gs.placeSoldiersOnRandomPositions(soldierCount)
+			}
+		}
+
+		rl.DrawRectangleLinesEx(optionBoundaries, 2, color)
+		rl.DrawText(option, optionX, optionY, fontSize, color)
+	}
+
+	startGameItem := "Start game"
+	startGameItemWidth := rl.MeasureText(startGameItem, fontSize)
+	startGameItemX := x - startGameItemWidth/2
+	y += spacing
+	startGameItemY := y
+	startGameItemBoundaries := rl.Rectangle{
+		X:      float32(startGameItemX),
+		Y:      float32(startGameItemY),
+		Width:  float32(startGameItemWidth),
+		Height: float32(centerLabelFontSize),
+	}
+
+	color := rl.Gray
+	if soldierCount > 0 {
+		color = rl.White
+		if rl.CheckCollisionPointRec(rl.GetMousePosition(), startGameItemBoundaries) {
+			color = rl.Green
+			if rl.IsMouseButtonPressed(rl.MouseLeftButton) {
+				gs.gameScreen = gameScreenGame
+			}
+		}
+	}
+	rl.DrawText(startGameItem, startGameItemX, startGameItemY, fontSize, color)
+}
+
+func (gs *gameState) placeSoldiersOnRandomPositions(soldierCount int) {
+	gs.soldiers = make([]*soldier.Soldier, 0, soldierCount)
+	ab := gs.boundaries.arenaBoundaries
+	for soldierCount > 0 {
+		pos := rl.Vector2{
+			X: rlutils.RandomFloat(ab.X, ab.Width+ab.X),
+			Y: rlutils.RandomFloat(ab.Y+100, ab.Height+ab.Y-100),
+		}
+		newSoldier := soldier.FromPos(pos, gs.assets.soldier)
+		gs.soldiers = append(gs.soldiers, newSoldier)
+		soldierCount--
 	}
 }
 
@@ -945,6 +1031,7 @@ func (gs *gameState) renderGameOver() {
 		gs.flares = nil
 		gs.grenades = nil
 		gs.projectiles = nil
+		soldierCount = 0
 		return
 	}
 
