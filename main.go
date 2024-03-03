@@ -369,6 +369,26 @@ func (gs *gameState) renderSetupGameScreen() {
 		rl.DrawText(option, optionX, optionY, fontSize, color)
 	}
 
+	backToMainMenuItem := "Back to main menu"
+	backToMainMenuItemWidth := rl.MeasureText(backToMainMenuItem, fontSize)
+	backToMainMenuItemX := x - backToMainMenuItemWidth/2
+	y += spacing
+	backToMainMenuItemY := y
+	backToMainMenuItemBoundaries := rl.Rectangle{
+		X:      float32(backToMainMenuItemX),
+		Y:      float32(backToMainMenuItemY),
+		Width:  float32(backToMainMenuItemWidth),
+		Height: float32(centerLabelFontSize),
+	}
+	color := rl.White
+	if rl.CheckCollisionPointRec(rl.GetMousePosition(), backToMainMenuItemBoundaries) {
+		color = rl.Green
+		if rl.IsMouseButtonPressed(rl.MouseLeftButton) {
+			gs.gameScreen = gameScreenMainMenu
+		}
+	}
+	rl.DrawText(backToMainMenuItem, backToMainMenuItemX, backToMainMenuItemY, fontSize, color)
+
 	startGameItem := "Start game"
 	startGameItemWidth := rl.MeasureText(startGameItem, fontSize)
 	startGameItemX := x - startGameItemWidth/2
@@ -381,7 +401,7 @@ func (gs *gameState) renderSetupGameScreen() {
 		Height: float32(centerLabelFontSize),
 	}
 
-	color := rl.Gray
+	color = rl.Gray
 	if soldierCount > 0 {
 		color = rl.White
 		if rl.CheckCollisionPointRec(rl.GetMousePosition(), startGameItemBoundaries) {
