@@ -25,9 +25,10 @@ var (
 )
 
 type Highscore struct {
-	Name  string
-	Time  float32
-	Score int
+	Name    string
+	Time    float32
+	Score   int
+	Victory bool
 }
 
 var ErrNotFound = errors.New("not found")

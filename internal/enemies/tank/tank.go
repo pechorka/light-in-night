@@ -33,10 +33,10 @@ type Enemy struct {
 	initialSpeed  float32
 }
 
-func FromPos(pos rl.Vector2, texture rl.Texture2D) *Enemy {
-	initialSpeed := rlutils.RandomFloat(speedFrom, speedTo)
-	initialHealth := rlutils.RandomFloat(healthFrom, healthTo)
-	initialDamage := rlutils.RandomFloat(damageFrom, damageTo)
+func FromPos(pos rl.Vector2, texture rl.Texture2D, time float32) *Enemy {
+	initialSpeed := enemies.ScaledStat(speedFrom, speedTo, time)
+	initialHealth := enemies.ScaledStat(healthFrom, healthTo, time)
+	initialDamage := enemies.ScaledStat(damageFrom, damageTo, time)
 	return &Enemy{
 		ID:  rand.Int(),
 		Pos: pos,

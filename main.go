@@ -51,10 +51,8 @@ var (
 var (
 	initialFlareCount   = 50
 	initialGrenadeCount = 5
-)
-
-var (
-	enemySpawnRate = float32(1)
+	initialSpawnRate    = float32(1)
+	spawnRateLimit      = float32(0.1)
 )
 
 // TODO: disgusting global variables
@@ -106,6 +104,7 @@ func main() {
 			grenadeCount: initialGrenadeCount,
 		},
 		selectedConsumable: flares,
+		spawnRate:          initialSpawnRate,
 
 		gameScreen: gameScreenMainMenu,
 
@@ -282,6 +281,7 @@ type gameState struct {
 	gameScreen      gameScreen
 	paused          bool
 	enemeSpawnedAgo float32
+	spawnRate       float32
 
 	score int
 	money int
@@ -291,6 +291,7 @@ type gameState struct {
 	db *db.DB
 
 	nameInput string
+	victory   bool
 
 	// draggingSoldier *soldier.Soldier
 }
@@ -973,7 +974,7 @@ func (gs *gameState) renderProjectiles() {
 	}
 }
 
-func newEnemy(pos rl.Vector2, assets *gameAssets) enemy {
+func newEnemy(pos rl.Vector2, assets *gameAssets, time float32) enemy {
 	// select enemy type
 	// 0 - basic
 	// 1 - fast
@@ -981,35 +982,46 @@ func newEnemy(pos rl.Vector2, assets *gameAssets) enemy {
 
 	switch rand.Intn(3) {
 	case 0:
-		return basic.FromPos(pos, assets.enemy.basic)
+		return basic.FromPos(pos, assets.enemy.basic, time)
 	case 1:
-		return fast.FromPos(pos, assets.enemy.fast)
+		return fast.FromPos(pos, assets.enemy.fast, time)
 	case 2:
-		return tank.FromPos(pos, assets.enemy.tank)
+		return tank.FromPos(pos, assets.enemy.tank, time)
 	default:
-		return basic.FromPos(pos, assets.enemy.basic)
+		return basic.FromPos(pos, assets.enemy.basic, time)
 	}
 }
 
 func (gs *gameState) spawnEnemies() {
 	gs.enemeSpawnedAgo += rl.GetFrameTime()
-	if gs.enemeSpawnedAgo < enemySpawnRate {
+
+	multiplier := gs.gameTime / 60
+	spawnRate := gs.spawnRate * float32(math.Pow(0.90, float64(multiplier)))
+	if spawnRate < spawnRateLimit {
+		spawnRate = spawnRateLimit
+	}
+	if gs.enemeSpawnedAgo < spawnRate {
 		return
 	}
 
 	gs.enemeSpawnedAgo = 0
 
-	newEnemy := gs.spawnEnemy()
+	newEnemy, ok := gs.spawnEnemy()
+	if !ok {
+		return
+	}
 	gs.enemies = append(gs.enemies, newEnemy)
 }
 
-func (gs *gameState) spawnEnemy() enemy {
+func (gs *gameState) spawnEnemy() (enemy, bool) {
 	arenaBoundaries := gs.boundaries.arenaBoundaries
 	attempt := 0
 	for {
 		attempt++
 		if attempt > 100 {
-			panic("Can't spawn enemy")
+			gs.victory = true
+			gs.gameScreen = gameScreenOver
+			return nil, false
 		}
 		// should be spawned in arena boundaries
 		pos := rl.Vector2{
@@ -1023,11 +1035,11 @@ func (gs *gameState) spawnEnemy() enemy {
 			continue
 		}
 
-		newEnemy := newEnemy(pos, gs.assets)
+		newEnemy := newEnemy(pos, gs.assets, gs.gameTime)
 
 		collissions := gs.prevQuadtree.Query(newEnemy.Boundaries())
 		if len(collissions) == 0 {
-			return newEnemy
+			return newEnemy, true
 		}
 	}
 }
@@ -1178,6 +1190,9 @@ func (gs *gameState) renderGameOver() {
 	fontSize := int32(30)
 
 	gameOver := "Game Over"
+	if gs.victory {
+		gameOver = "Victory"
+	}
 	gameOverWidth := rl.MeasureText(gameOver, fontSize)
 	gameOverX := x - gameOverWidth/2
 	gameOverY := y
@@ -1291,9 +1306,10 @@ func (gs *gameState) saveScore() {
 	rl.TraceLog(rl.LogInfo, "Saving score for %s: %d", gs.nameInput, gs.score)
 
 	err := gs.db.AddHighscore(db.Highscore{
-		Name:  gs.nameInput,
-		Score: gs.score,
-		Time:  gs.gameTime,
+		Name:    gs.nameInput,
+		Score:   gs.score,
+		Time:    gs.gameTime,
+		Victory: gs.victory,
 	})
 	if err != nil {
 		rl.TraceLog(rl.LogError, "Error saving highscore: %v", err)
@@ -1311,15 +1327,12 @@ func (gs *gameState) reset() {
 	gs.projectiles = nil
 	soldierCount = 0
 	gs.nameInput = ""
+	gs.victory = false
+	gs.selectedConsumable = flares
 }
 
 func (gs *gameState) renderLeaderboardScreen() {
-	leaderboard, err := gs.db.GetHighscores()
-	if err != nil {
-		rl.TraceLog(rl.LogError, "Error getting highscores: %v", err)
-		rlutils.DrawTextAtCenterOfRectangle("Could not get highscores", gs.boundaries.screenBoundaries, 20, rl.White)
-		return
-	}
+	leaderboard, _ := gs.db.GetHighscores()
 	x := int32(gs.boundaries.screenBoundaries.Width / 2)
 	y := int32(gs.boundaries.screenBoundaries.Y + 10)
 
@@ -1333,14 +1346,18 @@ func (gs *gameState) renderLeaderboardScreen() {
 	fontSize := int32(20)
 
 	nameX := x - 200
-	scoreX := x + 200
+	scoreX := x
 
 	for _, score := range leaderboard {
 		name := score.Name
 		rl.DrawText(name, nameX, y, fontSize, rl.White)
-		score := fmt.Sprintf("%d points in %s", score.Score, gameTimeToString(score.Time))
-		scoreWidth := rl.MeasureText(score, fontSize)
-		rl.DrawText(score, scoreX-scoreWidth, y, fontSize, rl.White)
+		prefix := "Unsuccessful run"
+		if score.Victory {
+			prefix = "Victory run"
+		}
+		score := fmt.Sprintf("%s %d points in %s", prefix, score.Score, gameTimeToString(score.Time))
+		// scoreWidth := rl.MeasureText(score, fontSize)
+		rl.DrawText(score, scoreX, y, fontSize, rl.White)
 		y += spacing
 	}
 
