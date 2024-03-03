@@ -656,13 +656,16 @@ func (gs *gameState) renderFooter() {
 
 func (gs *gameState) renderHowToPlayScreen() {
 	tutorialText := []string{
-		"1. Start a new game from the main menu and select the number of soldiers.",
-		"2. Use the left mouse button to deploy flares and grenades.",
-		"3. Flares reveal and repel enemies. Grenades damage them.",
-		"4. Use money earned from defeating enemies to buy more consumables.",
-		"5. The game ends when all soldiers are defeated.",
-		"6. Pause the game anytime with the spacebar.",
-		"7. Switch between flares and grenades with the 1 and 2 keys.",
+		"Start a new game from the main menu and select the number of soldiers.",
+		"Use the left mouse button to deploy flares and grenades.",
+		"Flares reveal and repel enemies. Soldiers will shoot at enemies in flare range.",
+		"Switch between flares and grenades with the 1 and 2 keys.",
+		"Use money earned from defeating enemies to buy more flares and grenades.",
+		"You can quick buy flares and grenades with the Q and W keys.",
+		"Soldiers will automatically attack enemies in their range.",
+		"The game ends when all soldiers are defeated.",
+		"Pause the game anytime with the spacebar.",
+		"The less soldiers you choose, the more money/score you earn.",
 	}
 
 	x := int32(gs.boundaries.screenBoundaries.Width / 2)
