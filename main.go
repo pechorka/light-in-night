@@ -49,6 +49,9 @@ var (
 	enemySpawnRate = float32(1)
 )
 
+// TODO: disgusting global variable
+var closeWindow = false
+
 func main() {
 
 	gb := &gameBoundaries{
@@ -83,8 +86,7 @@ func main() {
 		},
 		selectedConsumable: flares,
 
-		gameScreen: gameScreenGame,
-		paused:     true,
+		gameScreen: gameScreenMainMenu,
 	}
 
 	gs.soldiers = append(gs.soldiers, soldier.FromPos(rl.Vector2{
@@ -92,7 +94,7 @@ func main() {
 		Y: gb.arenaBoundaries.Height / 2,
 	}, gs.assets.soldier))
 
-	for !rl.WindowShouldClose() {
+	for !(rl.WindowShouldClose() || closeWindow) {
 		rl.BeginDrawing()
 
 		gs.renderFrame()
@@ -134,7 +136,8 @@ const (
 	gameScreenMainMenu gameScreen = iota
 	gameScreenGame
 	gameScreenOver
-	// TODO: add leaderboard screen
+	gameScreenLeaderboard
+	gameScreenHowToPlay
 )
 
 type gameBoundaries struct {
@@ -261,10 +264,72 @@ func (gs *gameState) renderFrame() {
 	rl.ClearBackground(rl.Black)
 
 	switch gs.gameScreen {
+	case gameScreenMainMenu:
+		gs.renderMainMenu()
 	case gameScreenGame:
 		gs.renderGame()
 	case gameScreenOver:
 		gs.renderGameOver()
+	case gameScreenLeaderboard:
+		gs.renderTodoScreen()
+	case gameScreenHowToPlay:
+		gs.renderTodoScreen()
+	}
+}
+
+func (gs *gameState) renderMainMenu() {
+	type menuItem struct {
+		name   string
+		action func()
+	}
+	actionNextScreen := func(nextScreen gameScreen) func() {
+		return func() {
+			gs.gameScreen = nextScreen
+		}
+	}
+	items := []menuItem{
+		{name: "New game", action: actionNextScreen(gameScreenGame)},
+		{name: "Leaderboard", action: actionNextScreen(gameScreenLeaderboard)},
+		{name: "How to play", action: actionNextScreen(gameScreenHowToPlay)},
+		{name: "Exit", action: func() { closeWindow = true }},
+	}
+
+	x := int32(gs.boundaries.screenBoundaries.Width / 2)
+	y := int32(gs.boundaries.screenBoundaries.Height / 3)
+	spacing := int32(50)
+	for i, item := range items {
+		textWidth := rl.MeasureText(item.name, centerLabelFontSize)
+		textX := x - textWidth/2
+		textY := y + int32(i)*spacing
+
+		mousePos := rl.GetMousePosition()
+		itemBoundaries := rl.Rectangle{
+			X:      float32(textX),
+			Y:      float32(textY),
+			Width:  float32(textWidth),
+			Height: float32(centerLabelFontSize),
+		}
+
+		color := rl.White
+		if rl.CheckCollisionPointRec(mousePos, itemBoundaries) {
+			color = rl.Green
+			if rl.IsMouseButtonPressed(rl.MouseLeftButton) {
+				item.action()
+			}
+		}
+
+		rl.DrawText(item.name, textX, textY, centerLabelFontSize, color)
+	}
+}
+
+func (gs *gameState) renderTodoScreen() {
+	renderHelpLabels(
+		"This screen is not implemented yet",
+		"Click anywhere to go back to the main menu",
+	)
+
+	if rl.IsMouseButtonPressed(rl.MouseLeftButton) {
+		gs.gameScreen = gameScreenMainMenu
 	}
 }
 
@@ -873,8 +938,8 @@ func (gs *gameState) renderSoldiers() {
 }
 
 func (gs *gameState) renderGameOver() {
-	if rl.IsKeyPressed(rl.KeyEnter) {
-		gs.gameScreen = gameScreenGame
+	if rl.IsMouseButtonPressed(rl.MouseLeftButton) {
+		gs.gameScreen = gameScreenMainMenu
 		gs.soldiers = nil
 		gs.enemies = nil
 		gs.flares = nil
@@ -884,7 +949,7 @@ func (gs *gameState) renderGameOver() {
 	}
 
 	renderHelpLabels(
-		"Press enter to restart",
+		"Click anywhere to go back to the main menu",
 	)
 
 	arenaBoundaries := gs.boundaries.arenaBoundaries
