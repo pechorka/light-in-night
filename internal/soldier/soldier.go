@@ -155,8 +155,12 @@ func (s *Soldier) WithinShootingRange(pos rl.Vector2) bool {
 	return rl.Vector2Distance(s.Pos, pos) < s.ShootingRange
 }
 
-func (s *Soldier) CanShoot() bool {
-	return s.ShootAgo >= s.ShootingRate
+func (s *Soldier) CanShoot(shootFast bool) bool {
+	rate := s.ShootingRate
+	if shootFast {
+		rate = rate / 2
+	}
+	return s.ShootAgo >= rate
 }
 
 func (s *Soldier) Shoot() {

@@ -1050,10 +1050,14 @@ func (gs *gameState) processSoldiers(flaredEnemies []enemy) {
 
 		if s.State == soldier.Standing {
 			// try to find shooting target
-			nearestEnemy := findNearest(flaredEnemies, s.Pos)
+			nearestEnemy := findNearest(gs.enemies, s.Pos)
+			shootFast := true
+			if nearestEnemy == nil || !s.WithinShootingRange(nearestEnemy.GetPos()) {
+				nearestEnemy = findNearest(flaredEnemies, s.Pos)
+				shootFast = false
+			}
 			if nearestEnemy != nil &&
-				s.WithinShootingRange(nearestEnemy.GetPos()) &&
-				s.CanShoot() {
+				s.CanShoot(shootFast) {
 				s.Shoot()
 				s.State = soldier.Shooting
 				// spawn projectile
