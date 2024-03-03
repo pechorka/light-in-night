@@ -911,8 +911,12 @@ func (gs *gameState) spawnEnemies() {
 
 func (gs *gameState) spawnEnemy() enemy {
 	arenaBoundaries := gs.boundaries.arenaBoundaries
+	attempt := 0
 	for {
-
+		attempt++
+		if attempt > 100 {
+			panic("Can't spawn enemy")
+		}
 		// should be spawned in arena boundaries
 		pos := rl.Vector2{
 			// between arena X and X + Width
