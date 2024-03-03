@@ -1,3 +1,4 @@
 *.md
+*.db
 # ignore the game executable
 illuminate-game-jam* 

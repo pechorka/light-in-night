@@ -4,12 +4,14 @@ import (
 	"embed"
 	"math"
 	"math/rand"
+	"os"
 	"slices"
 	"strconv"
 	"strings"
 
 	"github.com/pechorka/illuminate-game-jam/internal/consumables/flare"
 	"github.com/pechorka/illuminate-game-jam/internal/consumables/grenade"
+	"github.com/pechorka/illuminate-game-jam/internal/db"
 	"github.com/pechorka/illuminate-game-jam/internal/enemies/basic"
 	"github.com/pechorka/illuminate-game-jam/internal/enemies/fast"
 	"github.com/pechorka/illuminate-game-jam/internal/enemies/tank"
@@ -17,6 +19,7 @@ import (
 	"github.com/pechorka/illuminate-game-jam/internal/soldier"
 	"github.com/pechorka/illuminate-game-jam/pkg/data_structures/quadtree"
 	"github.com/pechorka/illuminate-game-jam/pkg/rlutils"
+	"go.etcd.io/bbolt"
 
 	rl "github.com/gen2brain/raylib-go/raylib"
 )
@@ -26,6 +29,10 @@ var assets embed.FS
 
 const (
 	quadtreeCapacity = 10
+)
+
+const (
+	maxNameLength = 10
 )
 
 var (
@@ -57,10 +64,17 @@ var (
 )
 
 func main() {
+	boltCli, err := bbolt.Open("game.db", os.ModePerm, nil)
+	if err != nil {
+		panic(err)
+	}
+	defer boltCli.Close()
+
+	db := db.New(boltCli)
 
 	gb := &gameBoundaries{
-		screenWidth:  800,
-		screenHeight: 600,
+		screenWidth:  1280,
+		screenHeight: 720,
 	}
 	gb.updateBoundaries()
 
@@ -92,6 +106,8 @@ func main() {
 		selectedConsumable: flares,
 
 		gameScreen: gameScreenMainMenu,
+
+		db: db,
 	}
 
 	gs.soldiers = append(gs.soldiers, soldier.FromPos(rl.Vector2{
@@ -246,6 +262,10 @@ type gameState struct {
 
 	gameTime float32
 
+	db *db.DB
+
+	nameInput string
+
 	// draggingSoldier *soldier.Soldier
 }
 
@@ -264,6 +284,10 @@ type itemStorage struct {
 func (gs *gameState) renderFrame() {
 	if rl.IsKeyPressed(rl.KeySpace) {
 		gs.paused = !gs.paused
+	}
+
+	if rl.IsKeyPressed(rl.KeyG) { // for testing purposes
+		gs.gameScreen = gameScreenOver
 	}
 
 	if gs.boundaries.update() {
@@ -506,10 +530,7 @@ func (gs *gameState) renderHeader() {
 	// Render header data. Example:
 	// Time: 1:15 Score: 100 Money: 100
 
-	time := int(gs.gameTime)
-	minutes := time / 60
-	seconds := time % 60
-	timeText := "Time: " + strconv.Itoa(minutes) + ":" + strconv.Itoa(seconds)
+	timeText := "Time: " + gameTimeToString(gs.gameTime)
 	scoreText := "Score: " + strconv.Itoa(gs.score)
 	moneyText := "Money: " + strconv.Itoa(gs.money) + "$"
 
@@ -527,6 +548,13 @@ func (gs *gameState) renderHeader() {
 	if gs.paused {
 		rl.DrawText("Paused", int32(headerBoundaries.Width-100), 10, 20, rl.White)
 	}
+}
+
+func gameTimeToString(time float32) string {
+	timeInt := int(time)
+	minutes := timeInt / 60
+	seconds := timeInt % 60
+	return strconv.Itoa(minutes) + ":" + strconv.Itoa(seconds)
 }
 
 type shopItem struct {
@@ -1100,23 +1128,142 @@ func (gs *gameState) renderSoldiers() {
 }
 
 func (gs *gameState) renderGameOver() {
-	if rl.IsMouseButtonPressed(rl.MouseLeftButton) {
-		gs.gameScreen = gameScreenMainMenu
-		gs.soldiers = nil
-		gs.enemies = nil
-		gs.flares = nil
-		gs.grenades = nil
-		gs.projectiles = nil
-		soldierCount = 0
+	x := int32(gs.boundaries.screenBoundaries.Width / 2)
+	y := int32(gs.boundaries.screenBoundaries.Height / 3)
+	spacing := int32(50)
+	fontSize := int32(30)
+
+	gameOver := "Game Over"
+	gameOverWidth := rl.MeasureText(gameOver, fontSize)
+	gameOverX := x - gameOverWidth/2
+	gameOverY := y
+	rl.DrawText(gameOver, gameOverX, gameOverY, fontSize, rl.White)
+
+	score := "Score: " + strconv.Itoa(gs.score)
+	scoreWidth := rl.MeasureText(score, fontSize)
+	scoreX := x - scoreWidth/2
+	y += spacing
+	scoreY := y
+	rl.DrawText(score, scoreX, scoreY, fontSize, rl.White)
+
+	time := "Time: " + gameTimeToString(gs.gameTime)
+	timeWidth := rl.MeasureText(time, fontSize)
+	timeX := x - timeWidth/2
+	y += spacing
+	timeY := y
+	rl.DrawText(time, timeX, timeY, fontSize, rl.White)
+
+	nameInput := "Enter your name: "
+	nameInputWidth := rl.MeasureText(nameInput, fontSize)
+	nameInputX := x - nameInputWidth/2
+	y += spacing
+	nameInputY := y
+	rl.DrawText(nameInput, nameInputX, nameInputY, fontSize, rl.White)
+
+	// render input field to the right of nameInput
+	inputBoundaries := rl.Rectangle{
+		X:      float32(nameInputX + nameInputWidth),
+		Y:      float32(nameInputY),
+		Width:  200,
+		Height: float32(fontSize) + 10,
+	}
+	rl.DrawRectangleLinesEx(inputBoundaries, 2, rl.White)
+	if rl.CheckCollisionPointRec(rl.GetMousePosition(), inputBoundaries) {
+		rl.SetMouseCursor(rl.MouseCursorIBeam)
+	}
+
+	if len(gs.nameInput) > 0 {
+		rl.DrawText(gs.nameInput, int32(inputBoundaries.X+10), int32(inputBoundaries.Y+10), fontSize, rl.White)
+	}
+
+	for key := rl.GetKeyPressed(); key > 0; key = rl.GetKeyPressed() {
+		if key == rl.KeyBackspace {
+			if len(gs.nameInput) > 0 {
+				gs.nameInput = gs.nameInput[:len(gs.nameInput)-1]
+			}
+		} else if key == rl.KeyEnter {
+			gs.saveScore()
+			gs.reset()
+			gs.gameScreen = gameScreenMainMenu
+		} else if 32 <= key && key <= 125 && len(gs.nameInput) < maxNameLength {
+			gs.nameInput += string(key)
+		}
+	}
+
+	// render (x/maxNameLength) to show how many characters can be entered
+	rl.DrawText(strconv.Itoa(len(gs.nameInput))+"/"+strconv.Itoa(maxNameLength), int32(inputBoundaries.X+inputBoundaries.Width+10), int32(inputBoundaries.Y), fontSize, rl.White)
+
+	backToMainMenuItem := "Save score and back to main menu"
+	backToMainMenuItemWidth := rl.MeasureText(backToMainMenuItem, fontSize)
+	backToMainMenuItemX := x - backToMainMenuItemWidth/2
+	y += spacing
+	backToMainMenuItemY := y
+	backToMainMenuItemBoundaries := rl.Rectangle{
+		X:      float32(backToMainMenuItemX),
+		Y:      float32(backToMainMenuItemY),
+		Width:  float32(backToMainMenuItemWidth),
+		Height: float32(fontSize),
+	}
+	color := rl.Gray
+	if rl.CheckCollisionPointRec(rl.GetMousePosition(), backToMainMenuItemBoundaries) {
+		color = rl.Green
+		if rl.IsMouseButtonPressed(rl.MouseLeftButton) {
+			gs.saveScore()
+			gs.reset()
+			gs.gameScreen = gameScreenMainMenu
+		}
+	}
+	rl.DrawText(backToMainMenuItem, backToMainMenuItemX, backToMainMenuItemY, fontSize, color)
+
+	backToMainMenuItemNoScore := "Back to main menu without saving score"
+	backToMainMenuItemNoScoreWidth := rl.MeasureText(backToMainMenuItemNoScore, fontSize)
+	backToMainMenuItemNoScoreX := x - backToMainMenuItemNoScoreWidth/2
+	y += spacing
+	backToMainMenuItemNoScoreY := y
+
+	backToMainMenuItemNoScoreBoundaries := rl.Rectangle{
+		X:      float32(backToMainMenuItemNoScoreX),
+		Y:      float32(backToMainMenuItemNoScoreY),
+		Width:  float32(backToMainMenuItemNoScoreWidth),
+		Height: float32(fontSize),
+	}
+	color = rl.Gray
+	if rl.CheckCollisionPointRec(rl.GetMousePosition(), backToMainMenuItemNoScoreBoundaries) {
+		color = rl.Green
+		if rl.IsMouseButtonPressed(rl.MouseLeftButton) {
+			gs.reset()
+			gs.gameScreen = gameScreenMainMenu
+		}
+	}
+
+	rl.DrawText(backToMainMenuItemNoScore, backToMainMenuItemNoScoreX, backToMainMenuItemNoScoreY, fontSize, color)
+}
+
+func (gs *gameState) saveScore() {
+	if len(gs.nameInput) == 0 {
 		return
 	}
 
-	renderHelpLabels(
-		"Click anywhere to go back to the main menu",
-	)
+	rl.TraceLog(rl.LogInfo, "Saving score for %s: %d", gs.nameInput, gs.score)
 
-	arenaBoundaries := gs.boundaries.arenaBoundaries
-	rlutils.DrawTextAtCenterOfRectangle("Game Over", arenaBoundaries, centerLabelFontSize, centerLabelColor)
+	gs.db.AddHighscore(db.Highscore{
+		Name:  gs.nameInput,
+		Score: gs.score,
+		Time:  gs.gameTime,
+	})
+}
+
+func (gs *gameState) reset() {
+	gs.gameTime = 0
+	gs.score = 0
+	gs.money = 0
+	gs.soldiers = nil
+	gs.enemies = nil
+	gs.flares = nil
+	gs.grenades = nil
+	gs.projectiles = nil
+	soldierCount = 0
+	gs.nameInput = ""
 }
 
 func renderHelpLabels(labels ...string) {
