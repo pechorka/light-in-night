@@ -4,6 +4,7 @@ import (
 	"math/rand"
 
 	rl "github.com/gen2brain/raylib-go/raylib"
+	"github.com/pechorka/illuminate-game-jam/internal/enemies"
 	"github.com/pechorka/illuminate-game-jam/pkg/rlutils"
 )
 
@@ -11,7 +12,6 @@ const (
 	initialSpeed  = 0.2
 	initialHealth = 40
 	initialDamage = 20
-	initialReward = 30
 )
 
 type Enemy struct {
@@ -23,6 +23,9 @@ type Enemy struct {
 	Damage float32
 
 	Texture rl.Texture2D
+
+	initialHealth float32
+	initialSpeed  float32
 }
 
 func FromPos(pos rl.Vector2, texture rl.Texture2D) *Enemy {
@@ -35,6 +38,9 @@ func FromPos(pos rl.Vector2, texture rl.Texture2D) *Enemy {
 		Damage: initialDamage,
 
 		Texture: texture,
+
+		initialHealth: initialHealth,
+		initialSpeed:  initialSpeed,
 	}
 }
 
@@ -47,8 +53,7 @@ func (e *Enemy) IsDead() bool {
 }
 
 func (e *Enemy) Reward() int {
-	// TODO: calculate reward based on health and speed
-	return initialReward
+	return enemies.Reward(e.initialHealth, e.initialSpeed)
 }
 
 func (e *Enemy) MoveTowards(pos rl.Vector2) rl.Vector2 {
