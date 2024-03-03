@@ -280,7 +280,7 @@ func (gs *gameState) renderFrame() {
 	case gameScreenLeaderboard:
 		gs.renderTodoScreen()
 	case gameScreenHowToPlay:
-		gs.renderTodoScreen()
+		gs.renderHowToPlayScreen()
 	}
 }
 
@@ -594,6 +594,34 @@ func (gs *gameState) renderFooter() {
 				}
 			}
 		}
+	}
+}
+
+func (gs *gameState) renderHowToPlayScreen() {
+	tutorialText := []string{
+		"How to Play:",
+		"1. Start a new game from the main menu and select the number of soldiers.",
+		"2. Use the left mouse button to deploy flares and grenades.",
+		"3. Flares reveal enemies. Grenades damage them.",
+		"4. Use money earned from defeating enemies to buy more consumables.",
+		"5. The game ends when all soldiers are defeated.",
+		"6. Pause the game anytime with the spacebar.",
+		"7. Switch between flares and grenades with the 1 and 2 keys.",
+		"Good luck and have fun!",
+	}
+
+	x := int32(gs.boundaries.screenBoundaries.X + 10)
+	y := int32(gs.boundaries.screenBoundaries.Y + 10)
+	for _, line := range tutorialText {
+		rl.DrawText(line, x, y, 20, rl.White)
+		y += 30
+	}
+
+	// Add a back button to return to the main menu
+	backButton := "Click anywhere to return to the main menu"
+	rl.DrawText(backButton, x, y+20, 20, rl.Gray) // Draw back button text
+	if rl.IsMouseButtonPressed(rl.MouseLeftButton) {
+		gs.gameScreen = gameScreenMainMenu // Return to main menu on click
 	}
 }
 
