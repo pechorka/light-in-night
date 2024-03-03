@@ -631,7 +631,6 @@ func (gs *gameState) renderFooter() {
 
 func (gs *gameState) renderHowToPlayScreen() {
 	tutorialText := []string{
-		"How to Play:",
 		"1. Start a new game from the main menu and select the number of soldiers.",
 		"2. Use the left mouse button to deploy flares and grenades.",
 		"3. Flares reveal and repel enemies. Grenades damage them.",
@@ -639,19 +638,26 @@ func (gs *gameState) renderHowToPlayScreen() {
 		"5. The game ends when all soldiers are defeated.",
 		"6. Pause the game anytime with the spacebar.",
 		"7. Switch between flares and grenades with the 1 and 2 keys.",
-		"Good luck and have fun!",
 	}
 
-	x := int32(gs.boundaries.screenBoundaries.X + 10)
+	x := int32(gs.boundaries.screenBoundaries.Width / 2)
 	y := int32(gs.boundaries.screenBoundaries.Y + 10)
+	howToPlayTitle := "How to play"
+	howToPlayTitleWidth := rl.MeasureText(howToPlayTitle, 50)
+	rl.DrawText(howToPlayTitle, x-howToPlayTitleWidth/2, y, 50, rl.White)
+	y += 60
+
+	lineX := x - 300
+
 	for _, line := range tutorialText {
-		rl.DrawText(line, x, y, 20, rl.White)
+		rl.DrawText(line, lineX, y, 20, rl.White)
 		y += 30
 	}
 
 	// Add a back button to return to the main menu
 	backButton := "Click anywhere to return to the main menu"
-	rl.DrawText(backButton, x, y+20, 20, rl.Gray) // Draw back button text
+	backButtonWidth := rl.MeasureText(backButton, 20)
+	rl.DrawText(backButton, x-backButtonWidth/2, y+20, 20, rl.Gray) // Draw back button text
 	if rl.IsMouseButtonPressed(rl.MouseLeftButton) {
 		gs.gameScreen = gameScreenMainMenu // Return to main menu on click
 	}
