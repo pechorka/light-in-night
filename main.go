@@ -225,8 +225,9 @@ type gameState struct {
 	gameScreen      gameScreen
 	paused          bool
 	enemeSpawnedAgo float32
-	// TODO: add money
+
 	score int
+	money int
 
 	gameTime float32
 
@@ -316,15 +317,18 @@ func (gs *gameState) renderHeader() {
 	seconds := time % 60
 	timeText := "Time: " + strconv.Itoa(minutes) + ":" + strconv.Itoa(seconds)
 	scoreText := "Score: " + strconv.Itoa(gs.score)
+	moneyText := "Money: " + strconv.Itoa(gs.money) + "$"
 
 	timeTextWidth := rl.MeasureText(timeText, 20)
+	scoreTextWidth := rl.MeasureText(scoreText, 20)
 
 	widthOffset := int32(10)
 	rl.DrawText(timeText, widthOffset, 10, 20, rl.White)
 	widthOffset += timeTextWidth + 10
 	// TODO: score is flickering depending on the time
 	rl.DrawText(scoreText, widthOffset, 10, 20, rl.White)
-	// TODO: add money
+	widthOffset += scoreTextWidth + 10
+	rl.DrawText(moneyText, widthOffset, 10, 20, rl.White)
 
 	if gs.paused {
 		rl.DrawText("Paused", int32(headerBoundaries.Width-100), 10, 20, rl.White)
@@ -396,7 +400,8 @@ func (gs *gameState) renderFooter() {
 			// description should be displayed above the item with border
 			gs.drawDescription(item.description)
 
-			if rl.IsMouseButtonPressed(rl.MouseLeftButton) {
+			if rl.IsMouseButtonPressed(rl.MouseLeftButton) && gs.money >= item.price {
+				gs.money -= item.price
 				switch item.ctype {
 				case flares:
 					gs.itemStorage.flareCount += item.count
@@ -798,6 +803,7 @@ func (gs *gameState) cleanupDeadEnemies() {
 	for _, e := range gs.enemies {
 		if e.IsDead() {
 			gs.score += e.Reward()
+			gs.money += e.Reward()
 			continue
 		}
 		aliveEnemies = append(aliveEnemies, e)
